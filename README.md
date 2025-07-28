@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://github.com/iD01t/Py2Win/blob/main/Py2Win.png?raw=true" alt="Py2Win"/>
+  <img src="https://github.com/iD01t/Py2Win/blob/main/icon.png?raw=true" alt="Py2Win"/>
 </div>
 
 ![Py2Win](https://github.com/iD01t/Py2Win/blob/main/Py2Win.png?raw=true)

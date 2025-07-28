@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="https://github.com/iD01t/Py2Win/blob/main/Py2Win.png?raw=true" alt="Py2Win"/>
+</div>
+
 ![Py2Win](https://github.com/iD01t/Py2Win/blob/main/Py2Win.png?raw=true)
 
 # Py2Win

@@ -261,7 +261,15 @@ def _check_nsis(self):
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             for line in iter(process.stdout.readline, ''): self.log(line.strip())
             if process.wait() == 0:
-                self.log(f"✅ NSIS installer built successfully: {output_exe_path}"); self._sign_installer(output_exe_path, s_settings); success = True
+process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            for line in iter(process.stdout.readline, ''): self.log(line.strip())
+            if process.wait() == 0:
+                self.log(f"✅ NSIS installer built successfully: {output_exe_path}")
+                self._sign_installer(output_exe_path, s_settings)
+                success = True
+            else: self.log("❌ NSIS build failed.")
+        except Exception as e: self.log(f"❌ An unexpected error occurred during installer build: {e}")
+        finally:
             else: self.log("❌ NSIS build failed.")
         except Exception as e: self.log(f"❌ An unexpected error occurred during installer build: {e}")
         finally:

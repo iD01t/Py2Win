@@ -528,7 +528,125 @@ if __name__ == "__main__":
             installer_path = Path("./installers_smoke/Setup_SmokeTestApp_1.0.exe")
             exe_ok = exe_path.is_file(); installer_ok = (not (sys.platform == "win32")) or installer_path.is_file()
             if exe_ok and installer_ok: logger.info(f"✅ Smoke Test Success: All possible artifacts created.")
-            else: logger.error(f"❌ Smoke Test Failed: Missing output files. Found EXE: {exe_ok}, Found Installer: {installer_path.is_file() if sys.platform == 'win32' else 'skipped'}.")
+def load_default_project(self): pass
+    def open_ai_assistant(self):
+        if self.ai_assistant_window is None or not self.ai_assistant_window.winfo_exists():
+            self.ai_assistant_window = AIAssistantDialog(self, self.script_entry.get())
+        else:
+            self.ai_assistant_window.focus()
+    def check_for_updates(self):
+        self.update_status("Checking for updates...")
+        def _check():
+            try:
+                with urllib.request.urlopen(UPDATE_URL, timeout=5) as response:
+                    latest_version = response.read().decode('utf-8').strip()
+                if latest_version > APP_VERSION:
+                    messagebox.showinfo("Update Available", f"A new version ({latest_version}) is available!
+Visit the website to download.")
+                else:
+                    messagebox.showinfo("No Updates", f"You are running the latest version ({APP_VERSION}).")
+            except Exception as e:
+                messagebox.showerror("Update Check Failed", f"Could not check for updates: {e}")
+            if self.winfo_exists():
+                self.update_status("Ready")
+        threading.Thread(target=_check, daemon=True).start()
+
+if __name__ == "__main__":
+    if not hasattr(subprocess, 'CREATE_NO_WINDOW'):
+        subprocess.CREATE_NO_WINDOW = 0
+    if len(sys.argv) > 1 and sys.argv[1] == '--smoke-test':
+        print("--- Running Headless End-to-End Smoke Test ---")
+        log_queue = queue.Queue()
+        logger = logging.getLogger('SmokeTest')
+        logger.setLevel(logging.INFO)
+        queue_handler = QueueHandler(log_queue)
+        logger.addHandler(queue_handler)
+        def run_test():
+            def log_from_queue():
+                while not log_queue.empty():
+                    print(log_queue.get_nowait())
+            # Use mutable lists to store callback results
+            validation_status, build_status, installer_status = [], [], []
+            validation_complete, build_complete, installer_complete = threading.Event(), threading.Event(), threading.Event()
+            def on_validation_complete(s):
+                validation_status.append(s)
+                validation_complete.set()
+            def on_build_complete(s):
+                build_status.append(s)
+                build_complete.set()
+            def on_installer_complete(s):
+                installer_status.append(s)
+                installer_complete.set()
+            # 1. Validate
+            env_manager = EnvManager(logger)
+            env_manager.validate_environment(on_validation_complete)
+            logger.info("Waiting for environment validation...")
+            completed = validation_complete.wait(timeout=300)
+            if not (completed and validation_status and validation_status[0]):
+                logger.error("❌ Smoke Test Failed: Environment validation failed or timed out.")
+                sys.exit(1)
+            # 2. Build
+            build_orchestrator = BuildOrchestrator(logger, env_manager)
+            test_app_path = Path("./smoke_test_app.py")
+            test_app_path.write_text("print('Hello from smoke test app!')")
+            smoke_settings = {
+                "script_path": str(test_app_path),
+                "exe_name": "SmokeTestApp",
+                "output_dir": "./dist_smoke",
+                "one_file": True,
+                "windowed": False,
+                "clean_build": True
+            }
+            build_orchestrator.build(smoke_settings, on_build_complete)
+            logger.info("Build triggered. Waiting for completion...")
+            completed = build_complete.wait(timeout=300)
+            if not (completed and build_status and build_status[0]):
+                logger.error("❌ Smoke Test Failed: Build process failed or timed out.")
+                sys.exit(1)
+            # 3. Installer
+            if sys.platform == "win32":
+                installer_maker = InstallerMaker(logger)
+                installer_settings = {
+                    "app_name": "SmokeTestApp",
+                    "version": "1.0",
+                    "output_dir": "./installers_smoke",
+                    "desktop_shortcut": True
+                }
+                installer_maker.build_nsis(installer_settings, smoke_settings, {}, on_installer_complete)
+                logger.info("Installer build triggered. Waiting for completion...")
+                completed = installer_complete.wait(timeout=120)
+                if not (completed and installer_status and installer_status[0]):
+                    logger.error("❌ Smoke Test Failed: Installer creation failed or timed out.")
+                    sys.exit(1)
+            else:
+                logger.info("ℹ️ Skipping NSIS installer test on non-Windows platform.")
+            # 4. Verify
+            exe_path = Path("./dist_smoke/SmokeTestApp.exe") if sys.platform == "win32" else Path("./dist_smoke/SmokeTestApp")
+            installer_path = Path("./installers_smoke/Setup_SmokeTestApp_1.0.exe")
+            exe_ok = exe_path.is_file()
+            installer_ok = (not (sys.platform == "win32")) or installer_path.is_file()
+            if exe_ok and installer_ok:
+                logger.info(f"✅ Smoke Test Success: All possible artifacts created.")
+            else:
+                logger.error(f"❌ Smoke Test Failed: Missing output files. Found EXE: {exe_ok}, Found Installer: {installer_path.is_file() if sys.platform == 'win32' else 'skipped'}.")
+        test_thread = threading.Thread(target=run_test)
+        test_thread.start()
+        while test_thread.is_alive():
+            try:
+                while True:
+                    print(log_queue.get_nowait())
+            except queue.Empty:
+                pass
+            time.sleep(0.1)
+        # Final log drain
+        try:
+            while True:
+                print(log_queue.get_nowait())
+        except queue.Empty:
+            pass
+    else:
+        app = Py2WinPremiumApp()
+        app.mainloop()
         test_thread = threading.Thread(target=run_test)
         test_thread.start()
         while test_thread.is_alive():

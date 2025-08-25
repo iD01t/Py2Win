@@ -14,18 +14,7 @@ import zipfile
 import urllib.request
 import time
 import webbrowser
-import urllib.request
-import time
-import webbrowser
-from pathlib import Path
-from tkinter import filedialog, messagebox, Listbox
-from importlib import metadata
-from modulefinder import ModuleFinder
-# from tempfile import TemporaryDirectory, NamedTemporaryFile
-# Importing specific classes from tempfile for creating temporary directories and files
-
-try:
-    import customtkinter
+import tempfile
 from pathlib import Path
 from tkinter import filedialog, messagebox, Listbox
 from importlib import metadata
@@ -69,32 +58,11 @@ def log_message(console_widget, message):
 
 class Tooltip:
     def __init__(self, widget, text):
-class Tooltip:
-    def __init__(self, widget, text):
-        self.widget = widget
-        self.text = text
-        self.tooltip_window = None
-        widget.bind("<Enter>", self._show)
-        widget.bind("<Leave>", self._hide)
-    def _show(self, _=None):
-        if self.tooltip_window or not self.text: return
-        x, y, _, _ = self.widget.bbox("insert"); x += self.widget.winfo_rootx() + 25; y += self.widget.winfo_rooty() + 25
+        self.widget = widget; self.text = text; self.tooltip_window = None
         widget.bind("<Enter>", self._show); widget.bind("<Leave>", self._hide)
     def _show(self, _=None):
         if self.tooltip_window or not self.text: return
-widget.bind("<Enter>", self._show); widget.bind("<Leave>", self._hide)
-    def _show(self, _=None):
-        if self.tooltip_window or not self.text: return
-        try:
-            x, y, _, _ = self.widget.bbox("insert")
-            x += self.widget.winfo_rootx() + 25
-            y += self.widget.winfo_rooty() + 25
-        except:
-            x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
-            y = self.widget.winfo_rooty() + self.widget.winfo_height()
-        self.tooltip_window = customtkinter.CTkToplevel(self.widget); self.tooltip_window.wm_overrideredirect(True)
-        self.tooltip_window.wm_geometry(f"+{x}+{y}")
-        label = customtkinter.CTkLabel(self.tooltip_window, text=self.text, corner_radius=6, fg_color="#2B2B2B", text_color="white", wraplength=280, padx=8, pady=5)
+        x, y, _, _ = self.widget.bbox("insert"); x += self.widget.winfo_rootx() + 25; y += self.widget.winfo_rooty() + 25
         self.tooltip_window = customtkinter.CTkToplevel(self.widget); self.tooltip_window.wm_overrideredirect(True)
         self.tooltip_window.wm_geometry(f"+{x}+{y}")
         label = customtkinter.CTkLabel(self.tooltip_window, text=self.text, corner_radius=6, fg_color="#2B2B2B", text_color="white", wraplength=280, padx=8, pady=5)
@@ -166,44 +134,13 @@ class BuildOrchestrator:
         with os.fdopen(fd, "w", encoding="utf-8") as f: f.write(ver_file_content)
         return path
     def _build_in_background(self, p_settings, on_complete=None):
-# Import os.path for secure path operations
-    # Import pathlib for Path manipulation
-    def _build_in_background(self, p_settings, on_complete=None):
-        script_path = p_settings.get('script_path')
-        if not script_path or not os.path.exists(os.path.abspath(script_path)):
+        if not p_settings.get('script_path') or not Path(p_settings.get('script_path')).exists():
             self.log("❌ Build failed: Python script not specified or not found."); on_complete and on_complete(False); return
         if self.app: self.app.after(0, self.app.update_status, "Starting build...", 0)
         start_time = time.time(); success = False; version_file = None
         try:
             pyinstaller_exe = self.env_manager.python_executable.parent / "pyinstaller"
             dist_path = Path(p_settings.get('output_dir', './dist')); work_path = Path('./build')
-            if p_settings.get('clean_build', True):
-                self.log("🧹 Cleaning previous build files...");
-                if dist_path.exists(): shutil.rmtree(dist_path)
-                if work_path.exists(): shutil.rmtree(work_path)
-                self.log("Clean complete.")
-            version_file = self._create_version_file(p_settings)
-            cmd = [str(pyinstaller_exe), os.path.abspath(script_path), "--noconfirm", f"--version-file={version_file}"]
-            cmd.extend(["--name", p_settings.get('exe_name', 'MyApp')]); cmd.extend(["--distpath", str(dist_path)]); cmd.extend(["--workpath", str(work_path)])
-            if p_settings.get('one_file', True): cmd.append("--onefile")
-            cmd.append("--windowed" if p_settings.get('windowed', True) else "--console")
-            if p := p_settings.get('icon_path'): cmd.extend(["--icon", str(p)])
-            if p_settings.get('use_upx') and shutil.which("upx"): cmd.extend(["--upx-dir", str(Path(shutil.which("upx")).parent)])
-            for hi in p_settings.get('hidden_imports', []): cmd.extend(["--hidden-import", hi])
-            for ex in p_settings.get('exclude_modules', []): cmd.extend(["--exclude-module", ex])
-            self.log("❌ Build failed: Python script not specified or not found."); on_complete and on_complete(False); return
-        if self.app: self.app.after(0, self.app.update_status, "Starting build...", 0)
-        start_time = time.time(); success = False; version_file = None
-        try:
-            pyinstaller_exe = self.env_manager.python_executable.parent / "pyinstaller"
-start_time = time.time(); success = False; version_file = None
-        try:
-            pyinstaller_exe = self.env_manager.python_executable.parent / "pyinstaller"
-            # Use os.path.abspath to resolve relative paths and os.path.normpath to remove any '..' components
-            dist_path = Path(os.path.normpath(os.path.abspath(p_settings.get('output_dir', './dist')))); work_path = Path(os.path.normpath(os.path.abspath('./build')))
-            if p_settings.get('clean_build', True):
-                self.log("🧹 Cleaning previous build files...");
-                if dist_path.exists(): shutil.rmtree(dist_path)
             if p_settings.get('clean_build', True):
                 self.log("🧹 Cleaning previous build files...");
                 if dist_path.exists(): shutil.rmtree(dist_path)
@@ -256,11 +193,7 @@ class NSISProvider:
         if NSIS_EXE_PATH.is_file():
             # On non-Windows, ensure it's executable just in case permissions were lost
             if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK):
-def _check_nsis(self):
-        if NSIS_EXE_PATH.is_file():
-            # On non-Windows, ensure it's executable just in case permissions were lost
-            if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK):
-                os.chmod(NSIS_EXE_PATH, 0o754)
+                os.chmod(NSIS_EXE_PATH, 0o755)
             self.log("makensis.exe found and executable."); return True
         self.log("makensis.exe not found. Attempting to download and extract NSIS...")
         TOOLS_DIR.mkdir(exist_ok=True); zip_path = TOOLS_DIR / "nsis.zip"
@@ -268,30 +201,6 @@ def _check_nsis(self):
             with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
             self.log("Downloaded NSIS zip. Extracting...")
             with zipfile.ZipFile(zip_path, 'r') as zip_ref: zip_ref.extractall(NSIS_DIR)
-            zip_path.unlink()
-            if NSIS_EXE_PATH.is_file():
-                if sys.platform != "win32":
-                    os.chmod(NSIS_EXE_PATH, 0o754)
-                self.log("✅ NSIS setup complete."); return True
-            self.log(f"❌ Failed to find makensis.exe at {NSIS_EXE_PATH}"); return False
-        except Exception as e: self.log(f"❌ Failed to download or extract NSIS: {e}"); return False
-            self.log("makensis.exe found and executable."); return True
-        self.log("makensis.exe not found. Attempting to download and extract NSIS...")
-        TOOLS_DIR.mkdir(exist_ok=True); zip_path = TOOLS_DIR / "nsis.zip"
-        try:
-            with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
-            self.log("Downloaded NSIS zip. Extracting...")
-try:
-            with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
-            self.log("Downloaded NSIS zip. Extracting...")
-            # import os.path
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                for file in zip_ref.namelist():
-                    if os.path.abspath(os.path.join(NSIS_DIR, file)).startswith(os.path.abspath(NSIS_DIR)):
-                        zip_ref.extract(file, NSIS_DIR)
-            zip_path.unlink()
-            if NSIS_EXE_PATH.is_file():
-                if sys.platform != "win32":
             zip_path.unlink()
             if NSIS_EXE_PATH.is_file():
                 if sys.platform != "win32":
@@ -303,15 +212,7 @@ try:
         self.log("Starting NSIS installer build..."); success = False
         try:
             if not self._check_nsis(): return
-self.log("Starting NSIS installer build..."); success = False
-        try:
-            if not self._check_nsis(): return
-            # Import os.path for secure path handling
-            # Use os.path.abspath() to get the absolute path and os.path.normpath() to normalize it
-            dist_dir = Path(os.path.normpath(os.path.abspath(p_settings.get('output_dir', './dist'))))
-            if not dist_dir.exists() or not any(dist_dir.iterdir()): self.log("❌ Dist directory is empty. Build the application first."); return
-
-            output_exe_path = self._get_output_path(i_settings)
+            dist_dir = Path(p_settings.get('output_dir', './dist'))
             if not dist_dir.exists() or not any(dist_dir.iterdir()): self.log("❌ Dist directory is empty. Build the application first."); return
 
             output_exe_path = self._get_output_path(i_settings)
@@ -330,32 +231,11 @@ self.log("Starting NSIS installer build..."); success = False
             if on_complete: on_complete(success)
     def _get_output_path(self, i_settings):
         app_name = i_settings.get('app_name', 'MyApp'); version = i_settings.get('version', '1.0')
-# Import os.path for secure path handling
-# Import pathlib for Path objects
-import os.path
-from pathlib import Path
-
-def _get_output_path(self, i_settings):
-    app_name = i_settings.get('app_name', 'MyApp')
-    version = i_settings.get('version', '1.0')
-    base_dir = './installers'
-    output_dir = Path(os.path.realpath(os.path.join(base_dir, i_settings.get('output_dir', ''))))
-    if not output_dir.is_relative_to(Path(base_dir).resolve()):
-        raise ValueError("Invalid output directory")
-    output_dir.mkdir(exist_ok=True, parents=True)
-    return output_dir / f"Setup_{app_name}_{version}.exe"
+        output_dir = Path(i_settings.get('output_dir', './installers')); output_dir.mkdir(exist_ok=True)
         return output_dir / f"Setup_{app_name}_{version}.exe"
     def _sign_installer(self, installer_path, s_settings):
         tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
-# Import os.path for secure path operations
-    # Import pathlib for Path object manipulation
-    def _sign_installer(self, installer_path, s_settings):
-        tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
-        if not (tool and cert and os.path.abspath(tool).startswith(os.path.abspath(os.getcwd())) and os.path.abspath(cert).startswith(os.path.abspath(os.getcwd())) and Path(tool).exists() and Path(cert).exists()): 
-            self.log("Code signing skipped: tool or certificate not provided or found, or path is outside the current working directory."); return
-        self.log(f"Signing installer: {installer_path}")
-        cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
-        try:
+        if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.log("Code signing skipped: tool or certificate not provided or found."); return
         self.log(f"Signing installer: {installer_path}")
         cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
         try:

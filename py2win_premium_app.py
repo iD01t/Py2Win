@@ -305,6 +305,10 @@ class Py2WinPremiumApp(customtkinter.CTk):
     def __init__(self):
         super().__init__()
         self.title(f"{APP_NAME} v{APP_VERSION}"); self.geometry("1200x800"); customtkinter.set_appearance_mode("Dark"); customtkinter.set_default_color_theme("blue")
+
+        # Initialize console to None before logic classes access it
+        self.console = None
+
         self.project_settings = {}; self.is_env_valid = False; self.icon_studio_window = None
         self.env_manager = EnvManager(self); self.import_scanner = ImportScanner(self); self.build_orchestrator = BuildOrchestrator(self)
         self.installer_maker = InstallerMaker(self); self.store_integration = StoreIntegration(self); self.obfuscation_engine = ObfuscationEngine(); self.auto_hidden_resolver = AutoHiddenImportResolver()

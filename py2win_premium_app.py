@@ -177,7 +177,13 @@ for p in p_settings.get('data_paths', []):
             if process.wait() == 0:
                 duration = round(time.time() - start_time, 2); success = True
                 self.logger.info(f"✅ Build successful in {duration} seconds.")
-            else: self.logger.error(f"❌ Build failed with exit code {process.returncode}.")
+if process.wait() == 0:
+                duration = round(time.time() - start_time, 2); success = True
+                self.logger.info(f"✅ Build successful in {duration} seconds.")
+            else: self.logger.error("❌ Build failed with exit code %d.", process.returncode)  # Use string formatting to prevent log injection
+        except Exception as e: self.logger.error(f"❌ An unexpected error occurred during build: {e}")
+        finally:
+            if version_file and os.path.exists(version_file): os.remove(version_file)
         except Exception as e: self.logger.error(f"❌ An unexpected error occurred during build: {e}")
         finally:
             if version_file and os.path.exists(version_file): os.remove(version_file)

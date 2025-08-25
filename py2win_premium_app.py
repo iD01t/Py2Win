@@ -215,7 +215,15 @@ class NSISProvider:
         return output_dir / f"Setup_{app_name}_{version}.exe"
     def _sign_installer(self, installer_path, s_settings):
         tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
-        if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.logger.info("Code signing skipped: tool or certificate not provided or found."); return
+# Import os.path for secure path operations
+    # Import pathlib for Path objects
+    def _sign_installer(self, installer_path, s_settings):
+        tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
+        if not (tool and cert and os.path.abspath(tool).startswith(os.path.abspath(os.getcwd())) and os.path.abspath(cert).startswith(os.path.abspath(os.getcwd())) and Path(tool).exists() and Path(cert).exists()):
+            self.logger.info("Code signing skipped: tool or certificate not provided or found."); return
+        self.logger.info(f"Signing installer: {installer_path}"); cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         self.logger.info(f"Signing installer: {installer_path}"); cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))

@@ -14,7 +14,18 @@ import zipfile
 import urllib.request
 import time
 import webbrowser
-import tempfile
+import urllib.request
+import time
+import webbrowser
+from pathlib import Path
+from tkinter import filedialog, messagebox, Listbox
+from importlib import metadata
+from modulefinder import ModuleFinder
+# from tempfile import TemporaryDirectory, NamedTemporaryFile
+# Importing specific classes from tempfile for creating temporary directories and files
+
+try:
+    import customtkinter
 from pathlib import Path
 from tkinter import filedialog, messagebox, Listbox
 from importlib import metadata

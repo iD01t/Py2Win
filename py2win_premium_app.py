@@ -36,7 +36,12 @@ except ImportError:
 
 # --- CONSTANTS ---
 APP_NAME = "Py2Win Premium, iD01t Productions"
-APP_VERSION = "3.0.0"
+# --- CONSTANTS ---
+APP_NAME = "Py2Win Premium, iD01t Productions"
+APP_VERSION = "3.0.1"
+UPDATE_URL = "https://gist.githubusercontent.com/jules-at-gh/f575f812ce4205428a16be649f448b11/raw/py2win_version.txt"
+VENV_DIR = Path("./build_env")
+TOOLS_DIR = Path("./.tools")
 UPDATE_URL = "https://gist.githubusercontent.com/jules-at-gh/f575f812ce4205428a16be649f448b11/raw/py2win_version.txt"
 VENV_DIR = Path("./build_env")
 TOOLS_DIR = Path("./.tools")
@@ -74,7 +79,15 @@ class Tooltip:
 # --- CORE LOGIC CLASSES ---
 class EnvManager:
     def __init__(self, app_instance=None):
-        self.app = app_instance; self.console = self.app.console if self.app else None
+        self.app = app_instance
+        try: self.console = self.app.console if self.app else None
+class EnvManager:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        self.console = self.app.console if self.app and hasattr(self.app, 'console') else None
+        self.python_executable = VENV_DIR / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        self.pip_executable = VENV_DIR / ("Scripts/pip.exe" if sys.platform == "win32" else "bin/pip")
+    def log(self, message): log_message(self.console, message)
         self.python_executable = VENV_DIR / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
         self.pip_executable = VENV_DIR / ("Scripts/pip.exe" if sys.platform == "win32" else "bin/pip")
     def log(self, message): log_message(self.console, message)
@@ -115,7 +128,20 @@ class EnvManager:
 
 class BuildOrchestrator:
     def __init__(self, app_instance=None):
-        self.app = app_instance; self.console = self.app.console if self.app else None
+        self.app = app_instance
+        try: self.console = self.app.console if self.app else None
+class BuildOrchestrator:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        self.console = None
+        if self.app is not None:
+            try:
+                self.console = self.app.console
+            except AttributeError:
+                pass
+        self.env_manager = EnvManager(app_instance)
+    def log(self, message): log_message(self.console, message)
+    def build(self, project_settings, on_complete=None):
         self.env_manager = EnvManager(app_instance)
     def log(self, message): log_message(self.console, message)
     def build(self, project_settings, on_complete=None):
@@ -178,7 +204,14 @@ class BuildOrchestrator:
 
 class InstallerMaker:
     def __init__(self, app_instance=None):
-        self.app = app_instance; self.console = self.app.console if self.app else None
+        self.app = app_instance
+        try: self.console = self.app.console if self.app else None
+if on_complete: on_complete(success)
+
+class InstallerMaker:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        self.console = getattr(self.app, 'console', None) if self.app else None
         self.nsis_provider = NSISProvider(app_instance)
     def log(self, message): log_message(self.console, message)
     def build_nsis(self, installer_settings, project_settings, security_settings, on_complete=None):
@@ -187,11 +220,69 @@ class InstallerMaker:
 
 class NSISProvider:
     def __init__(self, app_instance=None):
-        self.app = app_instance; self.console = self.app.console if self.app else None
+        self.app = app_instance
+        self.console = getattr(self.app, 'console', None) if self.app else None
     def log(self, message): log_message(self.console, message)
     def _check_nsis(self):
         if NSIS_EXE_PATH.is_file():
-            # On non-Windows, ensure it's executable just in case permissions were lost
+            if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK): os.chmod(NSIS_EXE_PATH, 0o755)
+            self.log("makensis.exe found and executable."); return True
+        self.nsis_provider = NSISProvider(app_instance)
+    def log(self, message): log_message(self.console, message)
+    def build_nsis(self, installer_settings, project_settings, security_settings, on_complete=None):
+        thread = threading.Thread(target=self.nsis_provider.build, args=(installer_settings, project_settings, security_settings, on_complete), daemon=True)
+        thread.start(); return thread
+
+class NSISProvider:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        try: self.console = self.app.console if self.app else None
+class NSISProvider:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        try:
+            self.console = self.app.console if self.app else None
+        except Exception:
+            self.console = None
+    def log(self, message): log_message(self.console, message)
+    def _check_nsis(self):
+        if NSIS_EXE_PATH.is_file():
+    def log(self, message): log_message(self.console, message)
+    def _check_nsis(self):
+        if NSIS_EXE_PATH.is_file():
+def _check_nsis(self):
+        if NSIS_EXE_PATH.is_file():
+            if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK): os.chmod(NSIS_EXE_PATH, 0o754)
+            self.log("makensis.exe found and executable."); return True
+        self.log("makensis.exe not found. Attempting to download and extract NSIS...")
+        TOOLS_DIR.mkdir(exist_ok=True); zip_path = TOOLS_DIR / "nsis.zip"
+        try:
+            with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
+            self.log("Downloaded NSIS zip. Extracting...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref: zip_ref.extractall(NSIS_DIR)
+            zip_path.unlink()
+            if NSIS_EXE_PATH.is_file():
+                if sys.platform != "win32": os.chmod(NSIS_EXE_PATH, 0o754)
+                self.log("✅ NSIS setup complete."); return True
+            self.log(f"❌ Failed to find makensis.exe at {NSIS_EXE_PATH}"); return False
+        except Exception as e: self.log(f"❌ Failed to download or extract NSIS: {e}"); return False
+            self.log("makensis.exe found and executable."); return True
+        self.log("makensis.exe not found. Attempting to download and extract NSIS...")
+        TOOLS_DIR.mkdir(exist_ok=True); zip_path = TOOLS_DIR / "nsis.zip"
+        try:
+            with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
+            self.log("Downloaded NSIS zip. Extracting...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref: zip_ref.extractall(NSIS_DIR)
+            zip_path.unlink()
+            if NSIS_EXE_PATH.is_file():
+class NSISProvider:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        try: self.console = self.app.console if self.app else None
+        except AttributeError: self.console = None
+    def log(self, message): log_message(self.console, message)
+    def _check_nsis(self):
+        if NSIS_EXE_PATH.is_file():
             if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK):
                 os.chmod(NSIS_EXE_PATH, 0o755)
             self.log("makensis.exe found and executable."); return True
@@ -210,21 +301,31 @@ class NSISProvider:
         except Exception as e: self.log(f"❌ Failed to download or extract NSIS: {e}"); return False
     def build(self, i_settings, p_settings, s_settings, on_complete=None):
         self.log("Starting NSIS installer build..."); success = False
+                self.log("✅ NSIS setup complete."); return True
+            self.log(f"❌ Failed to find makensis.exe at {NSIS_EXE_PATH}"); return False
+        except Exception as e: self.log(f"❌ Failed to download or extract NSIS: {e}"); return False
+    def build(self, i_settings, p_settings, s_settings, on_complete=None):
+        self.log("Starting NSIS installer build..."); success = False
         try:
             if not self._check_nsis(): return
             dist_dir = Path(p_settings.get('output_dir', './dist'))
             if not dist_dir.exists() or not any(dist_dir.iterdir()): self.log("❌ Dist directory is empty. Build the application first."); return
-
             output_exe_path = self._get_output_path(i_settings)
             nsi_script = self._generate_nsi_script(i_settings, p_settings, dist_dir, output_exe_path)
             nsi_file = Path("./installer.nsi"); nsi_file.write_text(nsi_script, encoding='utf-8')
-
             self.log("Generated .nsi script."); cmd = [str(NSIS_EXE_PATH), str(nsi_file)]
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             for line in iter(process.stdout.readline, ''): self.log(line.strip())
             if process.wait() == 0:
+process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            for line in iter(process.stdout.readline, ''): self.log(line.strip())
+            if process.wait() == 0:
                 self.log(f"✅ NSIS installer built successfully: {output_exe_path}")
-                self._sign_installer(output_exe_path, s_settings); success = True
+                self._sign_installer(output_exe_path, s_settings)
+                success = True
+            else: self.log("❌ NSIS build failed.")
+        except Exception as e: self.log(f"❌ An unexpected error occurred during installer build: {e}")
+        finally:
             else: self.log("❌ NSIS build failed.")
         except Exception as e: self.log(f"❌ An unexpected error occurred during installer build: {e}")
         finally:
@@ -236,8 +337,14 @@ class NSISProvider:
     def _sign_installer(self, installer_path, s_settings):
         tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
         if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.log("Code signing skipped: tool or certificate not provided or found."); return
+def _sign_installer(self, installer_path, s_settings):
+        tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
+        if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.log("Code signing skipped: tool or certificate not provided or found."); return
         self.log(f"Signing installer: {installer_path}")
         cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            self.log("✅ Installer signed successfully.")
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             self.log("✅ Installer signed successfully.")

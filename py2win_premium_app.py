@@ -111,7 +111,19 @@ class EnvManager:
         except (subprocess.CalledProcessError, FileNotFoundError) as e: raise RuntimeError(f"Failed to check/install packages: {e}")
 
 class BuildOrchestrator:
+class BuildOrchestrator:
     def __init__(self, logger, env_manager):
+        self.logger = logger
+        self.env_manager = env_manager
+
+    def build(self, project_settings, on_complete=None):
+        thread = threading.Thread(target=self._build_in_background, args=(project_settings, on_complete), daemon=True)
+        thread.start()
+        return thread
+
+    def _create_version_file(self, p_settings):
+        exe_name = p_settings.get('exe_name', 'MyApp')
+        ver_info = {
         self.logger = logger; self.env_manager = env_manager
     def build(self, project_settings, on_complete=None):
         thread = threading.Thread(target=self._build_in_background, args=(project_settings, on_complete), daemon=True)

@@ -76,7 +76,13 @@ class EnvManager:
     def __init__(self, app_instance=None):
         self.app = app_instance
         try: self.console = self.app.console if self.app else None
-        except AttributeError: self.console = None
+class EnvManager:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        self.console = self.app.console if self.app and hasattr(self.app, 'console') else None
+        self.python_executable = VENV_DIR / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        self.pip_executable = VENV_DIR / ("Scripts/pip.exe" if sys.platform == "win32" else "bin/pip")
+    def log(self, message): log_message(self.console, message)
         self.python_executable = VENV_DIR / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
         self.pip_executable = VENV_DIR / ("Scripts/pip.exe" if sys.platform == "win32" else "bin/pip")
     def log(self, message): log_message(self.console, message)

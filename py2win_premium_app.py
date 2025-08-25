@@ -301,7 +301,15 @@ self.log("Starting NSIS installer build..."); success = False
         return output_dir / f"Setup_{app_name}_{version}.exe"
     def _sign_installer(self, installer_path, s_settings):
         tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
-        if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.log("Code signing skipped: tool or certificate not provided or found."); return
+# Import os.path for secure path operations
+    # Import pathlib for Path object manipulation
+    def _sign_installer(self, installer_path, s_settings):
+        tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
+        if not (tool and cert and os.path.abspath(tool).startswith(os.path.abspath(os.getcwd())) and os.path.abspath(cert).startswith(os.path.abspath(os.getcwd())) and Path(tool).exists() and Path(cert).exists()): 
+            self.log("Code signing skipped: tool or certificate not provided or found, or path is outside the current working directory."); return
+        self.log(f"Signing installer: {installer_path}")
+        cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
+        try:
         self.log(f"Signing installer: {installer_path}")
         cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
         try:

@@ -82,7 +82,19 @@ class Tooltip:
         widget.bind("<Enter>", self._show); widget.bind("<Leave>", self._hide)
     def _show(self, _=None):
         if self.tooltip_window or not self.text: return
-        x, y, _, _ = self.widget.bbox("insert"); x += self.widget.winfo_rootx() + 25; y += self.widget.winfo_rooty() + 25
+widget.bind("<Enter>", self._show); widget.bind("<Leave>", self._hide)
+    def _show(self, _=None):
+        if self.tooltip_window or not self.text: return
+        try:
+            x, y, _, _ = self.widget.bbox("insert")
+            x += self.widget.winfo_rootx() + 25
+            y += self.widget.winfo_rooty() + 25
+        except:
+            x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
+            y = self.widget.winfo_rooty() + self.widget.winfo_height()
+        self.tooltip_window = customtkinter.CTkToplevel(self.widget); self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.wm_geometry(f"+{x}+{y}")
+        label = customtkinter.CTkLabel(self.tooltip_window, text=self.text, corner_radius=6, fg_color="#2B2B2B", text_color="white", wraplength=280, padx=8, pady=5)
         self.tooltip_window = customtkinter.CTkToplevel(self.widget); self.tooltip_window.wm_overrideredirect(True)
         self.tooltip_window.wm_geometry(f"+{x}+{y}")
         label = customtkinter.CTkLabel(self.tooltip_window, text=self.text, corner_radius=6, fg_color="#2B2B2B", text_color="white", wraplength=280, padx=8, pady=5)

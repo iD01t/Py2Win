@@ -535,7 +535,26 @@ if __name__ == "__main__":
             try:
                 while True: print(log_queue.get_nowait())
             except queue.Empty: pass
-            time.sleep(0.1)
+else: logger.error(f"❌ Smoke Test Failed: Missing output files. Found EXE: {exe_ok}, Found Installer: {installer_path.is_file() if sys.platform == 'win32' else 'skipped'}.")
+        test_thread = threading.Thread(target=run_test)
+        test_thread.start()
+        log_event = threading.Event()
+        def log_drain():
+            while test_thread.is_alive() or not log_queue.empty():
+                try:
+                    while True:
+                        print(log_queue.get_nowait())
+                except queue.Empty:
+                    log_event.wait(1)
+                    log_event.clear()
+        log_thread = threading.Thread(target=log_drain)
+        log_thread.start()
+        test_thread.join()
+        log_event.set()
+        log_thread.join()
+    else:
+        app = Py2WinPremiumApp()
+        app.mainloop()
         # Final log drain
         try:
             while True: print(log_queue.get_nowait())

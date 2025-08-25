@@ -199,7 +199,22 @@ class NSISProvider:
     def log(self, message): log_message(self.console, message)
     def _check_nsis(self):
         if NSIS_EXE_PATH.is_file():
-            if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK): os.chmod(NSIS_EXE_PATH, 0o755)
+def _check_nsis(self):
+        if NSIS_EXE_PATH.is_file():
+            if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK): os.chmod(NSIS_EXE_PATH, 0o754)
+            self.log("makensis.exe found and executable."); return True
+        self.log("makensis.exe not found. Attempting to download and extract NSIS...")
+        TOOLS_DIR.mkdir(exist_ok=True); zip_path = TOOLS_DIR / "nsis.zip"
+        try:
+            with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
+            self.log("Downloaded NSIS zip. Extracting...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref: zip_ref.extractall(NSIS_DIR)
+            zip_path.unlink()
+            if NSIS_EXE_PATH.is_file():
+                if sys.platform != "win32": os.chmod(NSIS_EXE_PATH, 0o754)
+                self.log("✅ NSIS setup complete."); return True
+            self.log(f"❌ Failed to find makensis.exe at {NSIS_EXE_PATH}"); return False
+        except Exception as e: self.log(f"❌ Failed to download or extract NSIS: {e}"); return False
             self.log("makensis.exe found and executable."); return True
         self.log("makensis.exe not found. Attempting to download and extract NSIS...")
         TOOLS_DIR.mkdir(exist_ok=True); zip_path = TOOLS_DIR / "nsis.zip"

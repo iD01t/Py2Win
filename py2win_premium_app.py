@@ -15,6 +15,7 @@ import urllib.request
 import time
 import webbrowser
 import tempfile
+import logging
 from pathlib import Path
 from tkinter import filedialog, messagebox, Listbox
 from importlib import metadata
@@ -36,7 +37,7 @@ except ImportError:
 
 # --- CONSTANTS ---
 APP_NAME = "Py2Win Premium, iD01t Productions"
-APP_VERSION = "3.0.1" # Incremented for bugfix
+APP_VERSION = "4.0.0" # Major refactor version
 UPDATE_URL = "https://gist.githubusercontent.com/jules-at-gh/f575f812ce4205428a16be649f448b11/raw/py2win_version.txt"
 VENV_DIR = Path("./build_env")
 TOOLS_DIR = Path("./.tools")
@@ -45,16 +46,14 @@ NSIS_URL = "https://prdownloads.sourceforge.net/nsis/nsis-3.09.zip?download"
 NSIS_EXE_PATH = NSIS_DIR / "nsis-3.09" / "makensis.exe"
 REQUIRED_PACKAGES = ["pip", "wheel", "setuptools", "pyinstaller", "pynsist", "pillow", "requests", "cryptography", "pefile", "pipdeptree"]
 
-# --- UTILITY FUNCTIONS ---
-def log_message(console_widget, message):
-    timestamp = time.strftime("%H:%M:%S")
-    full_message = f"[{timestamp}] {message}"
-    if console_widget and console_widget.winfo_exists():
-        console_widget.insert(customtkinter.END, full_message + "\n")
-        console_widget.see(customtkinter.END)
-        console_widget.update_idletasks()
-    else:
-        print(full_message)
+# --- Logging Setup ---
+class QueueHandler(logging.Handler):
+    """Class to send logging records to a queue."""
+    def __init__(self, log_queue):
+        super().__init__()
+        self.log_queue = log_queue
+    def emit(self, record):
+        self.log_queue.put(self.format(record))
 
 class Tooltip:
     def __init__(self, widget, text):
@@ -73,64 +72,47 @@ class Tooltip:
 
 # --- CORE LOGIC CLASSES ---
 class EnvManager:
-    def __init__(self, app_instance=None):
-        self.app = app_instance
-        try: self.console = self.app.console if self.app else None
-        except AttributeError: self.console = None
+    def __init__(self, logger):
+        self.logger = logger
         self.python_executable = VENV_DIR / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
         self.pip_executable = VENV_DIR / ("Scripts/pip.exe" if sys.platform == "win32" else "bin/pip")
-    def log(self, message): log_message(self.console, message)
     def validate_environment(self, on_complete=None):
-        self.log("Starting environment validation..."); thread = threading.Thread(target=self._validate_in_background, args=(on_complete,), daemon=True); thread.start(); return thread
+        self.logger.info("Starting environment validation...")
+        thread = threading.Thread(target=self._validate_in_background, args=(on_complete,), daemon=True); thread.start(); return thread
     def _validate_in_background(self, on_complete=None):
         try:
             if not self._check_venv(): self._create_venv()
-            self._check_and_install_packages(); self.log("✅ Environment validation successful.")
-            if self.app: self.app.is_env_valid = True
-            if on_complete: (self.app.after(0, on_complete, True) if self.app else on_complete(True))
+            self._check_and_install_packages(); self.logger.info("✅ Environment validation successful.")
+            if on_complete: on_complete(True)
         except Exception as e:
-            self.log(f"❌ Environment validation failed: {e}")
-            if self.app: self.app.is_env_valid = False; messagebox.showerror("Environment Error", f"Failed to set up the environment: {e}")
-            if on_complete: (self.app.after(0, on_complete, False) if self.app else on_complete(False))
+            self.logger.error(f"❌ Environment validation failed: {e}")
+            if on_complete: on_complete(False)
     def _check_venv(self): return VENV_DIR.is_dir() and self.python_executable.is_file()
     def _create_venv(self):
-        self.log(f"Creating virtual environment in {VENV_DIR}...")
+        self.logger.info(f"Creating virtual environment in {VENV_DIR}...")
         try:
             subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            self.log("Virtual environment created.")
+            self.logger.info("Virtual environment created.")
         except subprocess.CalledProcessError as e: raise RuntimeError(f"Failed to create venv: {e.stderr}")
     def _check_and_install_packages(self):
-        self.log("Checking for required packages...")
+        self.logger.info("Checking for required packages...")
         try:
             installed_raw = subprocess.run([str(self.pip_executable), "freeze"], check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
             installed = {p.split('==')[0].lower() for p in installed_raw.splitlines()}
             missing = [pkg for pkg in REQUIRED_PACKAGES if pkg.lower() not in installed]
             if missing:
-                self.log(f"Installing missing/upgrading packages: {', '.join(missing)}")
+                self.logger.info(f"Installing missing/upgrading packages: {', '.join(missing)}")
                 cmd = [str(self.pip_executable), "install", "--upgrade"] + missing
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-                for line in iter(process.stdout.readline, ''): self.log(line.strip())
+                for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
                 if process.wait() != 0: raise RuntimeError("Failed to install packages.")
-                self.log("All packages installed successfully.")
-            else: self.log("All required packages are already installed.")
+                self.logger.info("All packages installed successfully.")
+            else: self.logger.info("All required packages are already installed.")
         except (subprocess.CalledProcessError, FileNotFoundError) as e: raise RuntimeError(f"Failed to check/install packages: {e}")
 
 class BuildOrchestrator:
-    def __init__(self, app_instance=None):
-        self.app = app_instance
-        try: self.console = self.app.console if self.app else None
-class BuildOrchestrator:
-    def __init__(self, app_instance=None):
-        self.app = app_instance
-        try:
-            self.console = self.app.console if self.app else None
-        except AttributeError:
-            self.console = None
-        self.env_manager = EnvManager(app_instance)
-    def log(self, message): log_message(self.console, message)
-    def build(self, project_settings, on_complete=None):
-        self.env_manager = EnvManager(app_instance)
-    def log(self, message): log_message(self.console, message)
+    def __init__(self, logger, env_manager):
+        self.logger = logger; self.env_manager = env_manager
     def build(self, project_settings, on_complete=None):
         thread = threading.Thread(target=self._build_in_background, args=(project_settings, on_complete), daemon=True)
         thread.start(); return thread
@@ -148,17 +130,16 @@ class BuildOrchestrator:
         return path
     def _build_in_background(self, p_settings, on_complete=None):
         if not p_settings.get('script_path') or not Path(p_settings.get('script_path')).exists():
-            self.log("❌ Build failed: Python script not specified or not found."); on_complete and on_complete(False); return
-        if self.app: self.app.after(0, self.app.update_status, "Starting build...", 0)
+            self.logger.error("❌ Build failed: Python script not specified or not found."); on_complete and on_complete(False); return
         start_time = time.time(); success = False; version_file = None
         try:
             pyinstaller_exe = self.env_manager.python_executable.parent / "pyinstaller"
             dist_path = Path(p_settings.get('output_dir', './dist')); work_path = Path('./build')
             if p_settings.get('clean_build', True):
-                self.log("🧹 Cleaning previous build files...");
+                self.logger.info("🧹 Cleaning previous build files...");
                 if dist_path.exists(): shutil.rmtree(dist_path)
                 if work_path.exists(): shutil.rmtree(work_path)
-                self.log("Clean complete.")
+                self.logger.info("Clean complete.")
             version_file = self._create_version_file(p_settings)
             cmd = [str(pyinstaller_exe), p_settings['script_path'], "--noconfirm", f"--version-file={version_file}"]
             cmd.extend(["--name", p_settings.get('exe_name', 'MyApp')]); cmd.extend(["--distpath", str(dist_path)]); cmd.extend(["--workpath", str(work_path)])
@@ -171,119 +152,61 @@ class BuildOrchestrator:
             for p in p_settings.get('data_paths', []):
                 sp = os.path.abspath(p); dest = os.path.basename(sp) if os.path.isdir(sp) else "."
                 cmd.append(f"--add-data={sp}{(';' if os.name == 'nt' else ':')}{dest}")
-            self.log("Building with PyInstaller..."); self.log(f"Command: {' '.join(cmd)}")
-            if self.app: self.app.after(0, self.app.progress_bar.set, 0.1)
+            self.logger.info("Building with PyInstaller..."); self.logger.info(f"Command: {' '.join(cmd)}")
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            for i, line in enumerate(iter(process.stdout.readline, '')):
-                self.log(line.strip());
-                if self.app: self.app.after(0, self.app.progress_bar.set, min(0.9, 0.1 + (i / 200.0)))
-            process.wait();
-            if self.app: self.app.after(0, self.app.progress_bar.set, 1.0)
-            if process.returncode == 0:
+            for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
+            if process.wait() == 0:
                 duration = round(time.time() - start_time, 2); success = True
-                self.log(f"✅ Build successful in {duration} seconds.")
-                if self.app: self.app.after(0, self.app.update_status, f"Build successful! ({duration}s)", 1.0)
-            else: self.log(f"❌ Build failed with exit code {process.returncode}.")
-        except Exception as e: self.log(f"❌ An unexpected error occurred during build: {e}")
+                self.logger.info(f"✅ Build successful in {duration} seconds.")
+            else: self.logger.error(f"❌ Build failed with exit code {process.returncode}.")
+        except Exception as e: self.logger.error(f"❌ An unexpected error occurred during build: {e}")
         finally:
             if version_file and os.path.exists(version_file): os.remove(version_file)
             if on_complete: on_complete(success)
 
 class InstallerMaker:
-    def __init__(self, app_instance=None):
-        self.app = app_instance
-        try: self.console = self.app.console if self.app else None
-if on_complete: on_complete(success)
-
-class InstallerMaker:
-    def __init__(self, app_instance=None):
-        self.app = app_instance
-        try: self.console = self.app.console if self.app else None
-        except Exception: self.console = None
-        self.nsis_provider = NSISProvider(app_instance)
-    def log(self, message): log_message(self.console, message)
+    def __init__(self, logger):
+        self.logger = logger
+        self.nsis_provider = NSISProvider(logger)
     def build_nsis(self, installer_settings, project_settings, security_settings, on_complete=None):
         thread = threading.Thread(target=self.nsis_provider.build, args=(installer_settings, project_settings, security_settings, on_complete), daemon=True)
         thread.start(); return thread
 
 class NSISProvider:
-    def __init__(self, app_instance=None):
-        self.app = app_instance
-        try: self.console = self.app.console if self.app else None
-        except Exception: self.console = None
-    def log(self, message): log_message(self.console, message)
+    def __init__(self, logger):
+        self.logger = logger
     def _check_nsis(self):
         if NSIS_EXE_PATH.is_file():
             if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK): os.chmod(NSIS_EXE_PATH, 0o755)
-            self.log("makensis.exe found and executable."); return True
-        self.log("makensis.exe not found. Attempting to download and extract NSIS...")
-        self.nsis_provider = NSISProvider(app_instance)
-    def log(self, message): log_message(self.console, message)
-    def build_nsis(self, installer_settings, project_settings, security_settings, on_complete=None):
-        thread = threading.Thread(target=self.nsis_provider.build, args=(installer_settings, project_settings, security_settings, on_complete), daemon=True)
-        thread.start(); return thread
-
-class NSISProvider:
-    def __init__(self, app_instance=None):
-        self.app = app_instance
-        try: self.console = self.app.console if self.app else None
-        except AttributeError: self.console = None
-    def log(self, message): log_message(self.console, message)
-    def _check_nsis(self):
-        if NSIS_EXE_PATH.is_file():
-def _check_nsis(self):
-        if NSIS_EXE_PATH.is_file():
-            if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK): os.chmod(NSIS_EXE_PATH, 0o754)
-            self.log("makensis.exe found and executable."); return True
-        self.log("makensis.exe not found. Attempting to download and extract NSIS...")
+            self.logger.info("makensis.exe found and executable."); return True
+        self.logger.info("makensis.exe not found. Attempting to download and extract NSIS...")
         TOOLS_DIR.mkdir(exist_ok=True); zip_path = TOOLS_DIR / "nsis.zip"
         try:
             with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
-            self.log("Downloaded NSIS zip. Extracting...")
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref: zip_ref.extractall(NSIS_DIR)
-            zip_path.unlink()
-            if NSIS_EXE_PATH.is_file():
-                if sys.platform != "win32": os.chmod(NSIS_EXE_PATH, 0o754)
-                self.log("✅ NSIS setup complete."); return True
-            self.log(f"❌ Failed to find makensis.exe at {NSIS_EXE_PATH}"); return False
-        except Exception as e: self.log(f"❌ Failed to download or extract NSIS: {e}"); return False
-            self.log("makensis.exe found and executable."); return True
-        self.log("makensis.exe not found. Attempting to download and extract NSIS...")
-        TOOLS_DIR.mkdir(exist_ok=True); zip_path = TOOLS_DIR / "nsis.zip"
-        try:
-            with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
-            self.log("Downloaded NSIS zip. Extracting...")
+            self.logger.info("Downloaded NSIS zip. Extracting...")
             with zipfile.ZipFile(zip_path, 'r') as zip_ref: zip_ref.extractall(NSIS_DIR)
             zip_path.unlink()
             if NSIS_EXE_PATH.is_file():
                 if sys.platform != "win32": os.chmod(NSIS_EXE_PATH, 0o755)
-                self.log("✅ NSIS setup complete."); return True
-            self.log(f"❌ Failed to find makensis.exe at {NSIS_EXE_PATH}"); return False
-        except Exception as e: self.log(f"❌ Failed to download or extract NSIS: {e}"); return False
+                self.logger.info("✅ NSIS setup complete."); return True
+            self.logger.error(f"❌ Failed to find makensis.exe at {NSIS_EXE_PATH}"); return False
+        except Exception as e: self.logger.error(f"❌ Failed to download or extract NSIS: {e}"); return False
     def build(self, i_settings, p_settings, s_settings, on_complete=None):
-        self.log("Starting NSIS installer build..."); success = False
+        self.logger.info("Starting NSIS installer build..."); success = False
         try:
             if not self._check_nsis(): return
             dist_dir = Path(p_settings.get('output_dir', './dist'))
-            if not dist_dir.exists() or not any(dist_dir.iterdir()): self.log("❌ Dist directory is empty. Build the application first."); return
+            if not dist_dir.exists() or not any(dist_dir.iterdir()): self.logger.error("❌ Dist directory is empty. Build the application first."); return
             output_exe_path = self._get_output_path(i_settings)
             nsi_script = self._generate_nsi_script(i_settings, p_settings, dist_dir, output_exe_path)
             nsi_file = Path("./installer.nsi"); nsi_file.write_text(nsi_script, encoding='utf-8')
-            self.log("Generated .nsi script."); cmd = [str(NSIS_EXE_PATH), str(nsi_file)]
+            self.logger.info("Generated .nsi script."); cmd = [str(NSIS_EXE_PATH), str(nsi_file)]
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            for line in iter(process.stdout.readline, ''): self.log(line.strip())
+            for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
             if process.wait() == 0:
-process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            for line in iter(process.stdout.readline, ''): self.log(line.strip())
-            if process.wait() == 0:
-                self.log(f"✅ NSIS installer built successfully: {output_exe_path}")
-                self._sign_installer(output_exe_path, s_settings)
-                success = True
-            else: self.log("❌ NSIS build failed.")
-        except Exception as e: self.log(f"❌ An unexpected error occurred during installer build: {e}")
-        finally:
-            else: self.log("❌ NSIS build failed.")
-        except Exception as e: self.log(f"❌ An unexpected error occurred during installer build: {e}")
+                self.logger.info(f"✅ NSIS installer built successfully: {output_exe_path}"); self._sign_installer(output_exe_path, s_settings); success = True
+            else: self.logger.error("❌ NSIS build failed.")
+        except Exception as e: self.logger.error(f"❌ An unexpected error occurred during installer build: {e}")
         finally:
             if on_complete: on_complete(success)
     def _get_output_path(self, i_settings):
@@ -292,12 +215,12 @@ process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
         return output_dir / f"Setup_{app_name}_{version}.exe"
     def _sign_installer(self, installer_path, s_settings):
         tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
-        if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.log("Code signing skipped: tool or certificate not provided or found."); return
-        self.log(f"Signing installer: {installer_path}"); cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
+        if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.logger.info("Code signing skipped: tool or certificate not provided or found."); return
+        self.logger.info(f"Signing installer: {installer_path}"); cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            self.log("✅ Installer signed successfully.")
-        except subprocess.CalledProcessError as e: self.log(f"❌ Code signing failed: {e.stderr}")
+            self.logger.info("✅ Installer signed successfully.")
+        except subprocess.CalledProcessError as e: self.logger.error(f"❌ Code signing failed: {e.stderr}")
     def _generate_nsi_script(self, i_settings, p_settings, dist_dir, output_exe):
         exe_name = f"{p_settings.get('exe_name', 'MyApp')}.exe"
         script = f"""
@@ -351,10 +274,40 @@ class AIAssistantDialog(customtkinter.CTkToplevel):
 class Py2WinPremiumApp(customtkinter.CTk):
     def __init__(self):
         super().__init__()
+        # Window setup
         self.title(f"{APP_NAME} v{APP_VERSION}"); self.geometry("1200x800"); customtkinter.set_appearance_mode("Dark"); customtkinter.set_default_color_theme("blue")
-        self.console = None; self.project_settings = {}; self.is_env_valid = False; self.ai_assistant_window = None; self.data_paths = []
-        self.env_manager = EnvManager(self); self.build_orchestrator = BuildOrchestrator(self); self.installer_maker = InstallerMaker(self)
-        self.create_widgets(); self.load_default_project()
+        # App state
+        self.project_settings = {}; self.is_env_valid = False; self.ai_assistant_window = None; self.data_paths = []
+        # Build UI first
+        self.create_widgets()
+        # Setup logging system to use the UI
+        self.setup_logging()
+        # Now, instantiate backend classes with the logger
+        self.env_manager = EnvManager(self.logger); self.build_orchestrator = BuildOrchestrator(self.logger, self.env_manager); self.installer_maker = InstallerMaker(self.logger)
+        # Finalize
+        self.load_default_project()
+
+    def setup_logging(self):
+        self.log_queue = queue.Queue()
+        self.logger = logging.getLogger('Py2WinApp')
+        self.logger.setLevel(logging.INFO)
+        # Create a handler that sends logs to the queue
+        queue_handler = QueueHandler(self.log_queue)
+        formatter = logging.Formatter('[%(asctime)s] %(message)s', '%H:%M:%S')
+        queue_handler.setFormatter(formatter)
+        self.logger.addHandler(queue_handler)
+        # Start polling the queue to update the GUI
+        self.after(100, self._poll_log_queue)
+
+    def _poll_log_queue(self):
+        try:
+            while True:
+                record = self.log_queue.get(block=False)
+                self.console.insert("end", record + "\n")
+                self.console.see("end")
+        except queue.Empty:
+            pass
+        self.after(100, self._poll_log_queue)
 
     def create_widgets(self):
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
@@ -449,10 +402,10 @@ class Py2WinPremiumApp(customtkinter.CTk):
     def browse_output_dir(self): path = filedialog.askdirectory(); self.output_dir_entry.delete(0, "end"); self.output_dir_entry.insert(0, path)
     def start_build(self):
         if not self.is_env_valid: messagebox.showerror("Environment Invalid", "Please validate the environment before building."); return
-        self.build_orchestrator.build(self.gather_project_settings())
+        self.build_orchestrator.build(self.gather_project_settings(), lambda s: self.after(0, self.update_status, "Build successful." if s else "Build failed."))
     def build_nsis_installer(self):
         if not self.is_env_valid: messagebox.showerror("Environment Invalid", "Please validate environment first."); return
-        self.installer_maker.build_nsis(self.gather_installer_settings(), self.gather_project_settings(), self.gather_security_settings())
+        self.installer_maker.build_nsis(self.gather_installer_settings(), self.gather_project_settings(), self.gather_security_settings(), lambda s: self.after(0, self.update_status, "Installer build successful." if s else "Installer build failed."))
     def gather_project_settings(self):
         settings = {"script_path": self.script_entry.get(), "exe_name": self.exe_name_entry.get(), "output_dir": self.output_dir_entry.get() or "./dist", "one_file": self.one_file_var.get() == "on", "windowed": self.windowed_var.get() == "on", "clean_build": self.clean_build_var.get() == "on", "use_upx": self.use_upx_var.get() == "on", "hidden_imports": list(self.hidden_list.get(0, "end")), "exclude_modules": list(self.exclude_list.get(0, "end")), "data_paths": self.data_paths, "icon_path": ""}
         for key, entry in self.branding_entries.items(): settings[key] = entry.get()
@@ -463,79 +416,69 @@ class Py2WinPremiumApp(customtkinter.CTk):
         return {"sign_tool_path": self.sign_tool_entry.get(), "cert_file": self.cert_file_entry.get(), "cert_pass": self.cert_pass_entry.get()}
     def load_default_project(self): pass
     def open_ai_assistant(self):
-        if self.ai_assistant_window is None or not self.ai_assistant_window.winfo_exists():
-            self.ai_assistant_window = AIAssistantDialog(self, self.script_entry.get())
+        if self.ai_assistant_window is None or not self.ai_assistant_window.winfo_exists(): self.ai_assistant_window = AIAssistantDialog(self, self.script_entry.get())
         else: self.ai_assistant_window.focus()
     def check_for_updates(self):
         self.update_status("Checking for updates...")
         def _check():
             try:
-                with urllib.request.urlopen(UPDATE_URL, timeout=5) as response:
-                    latest_version = response.read().decode('utf-8').strip()
-                if latest_version > APP_VERSION:
-                    messagebox.showinfo("Update Available", f"A new version ({latest_version}) is available!\nVisit the website to download.")
-                else:
-                    messagebox.showinfo("No Updates", f"You are running the latest version ({APP_VERSION}).")
+                with urllib.request.urlopen(UPDATE_URL, timeout=5) as response: latest_version = response.read().decode('utf-8').strip()
+                if latest_version > APP_VERSION: messagebox.showinfo("Update Available", f"A new version ({latest_version}) is available!\nVisit the website to download.")
+                else: messagebox.showinfo("No Updates", f"You are running the latest version ({APP_VERSION}).")
             except Exception as e: messagebox.showerror("Update Check Failed", f"Could not check for updates: {e}")
             if self.winfo_exists(): self.update_status("Ready")
         threading.Thread(target=_check, daemon=True).start()
 
 if __name__ == "__main__":
     if not hasattr(subprocess, 'CREATE_NO_WINDOW'): subprocess.CREATE_NO_WINDOW = 0
-    
     if len(sys.argv) > 1 and sys.argv[1] == '--smoke-test':
         print("--- Running Headless End-to-End Smoke Test ---")
-        
-        # Use mutable lists to store callback results, avoiding 'nonlocal' issues
-        validation_status, build_status, installer_status = [], [], []
-        validation_complete, build_complete, installer_complete = threading.Event(), threading.Event(), threading.Event()
-
-        def on_validation_complete(success): validation_status.append(success); validation_complete.set()
-        def on_build_complete(success): build_status.append(success); build_complete.set()
-        def on_installer_complete(success): installer_status.append(success); installer_complete.set()
-
-        # 1. Validate Environment
-        env_manager = EnvManager(); env_manager.validate_environment(on_validation_complete)
-        print("Waiting for environment validation..."); completed = validation_complete.wait(timeout=300)
-        if not (completed and validation_status and validation_status[0]): print("❌ Smoke Test Failed: Environment validation failed or timed out."); sys.exit(1)
-        print("✅ Environment validation complete.")
-        
-        # 2. Run smoke test build
-        build_orchestrator = BuildOrchestrator()
-        test_app_path = Path("./smoke_test_app.py"); test_app_path.write_text("print('Hello from smoke test app!')")
-        smoke_settings = {"script_path": str(test_app_path), "exe_name": "SmokeTestApp", "output_dir": "./dist_smoke", "one_file": True, "windowed": False, "clean_build": True}
-        build_orchestrator.build(smoke_settings, on_build_complete)
-        print("Build triggered. Waiting for completion..."); completed = build_complete.wait(timeout=300)
-        if not (completed and build_status and build_status[0]): print("❌ Smoke Test Failed: Build process failed or timed out."); sys.exit(1)
-        print("✅ Build process complete.")
-
-        # 3. Run installer creation (only if on Windows)
-        installer_created = False
-        if sys.platform == "win32":
-            installer_maker = InstallerMaker()
-            installer_settings = {"app_name": "SmokeTestApp", "version": "1.0", "output_dir": "./installers_smoke", "desktop_shortcut": True}
-            installer_maker.build_nsis(installer_settings, smoke_settings, {}, on_installer_complete)
-            print("Installer build triggered. Waiting for completion..."); completed = installer_complete.wait(timeout=120)
-            if not (completed and installer_status and installer_status[0]): print("❌ Smoke Test Failed: Installer creation failed or timed out."); sys.exit(1)
-            print("✅ Installer creation complete.")
-            installer_created = True
-        else:
-            print("ℹ️ Skipping NSIS installer test on non-Windows platform.")
-            installer_created = True # Mark as "success" for non-windows platforms
-
-        # 4. Verify outputs
-        exe_path = Path("./dist_smoke/SmokeTestApp.exe") if sys.platform == "win32" else Path("./dist_smoke/SmokeTestApp")
-        installer_path = Path("./installers_smoke/Setup_SmokeTestApp_1.0.exe")
-
-        exe_ok = exe_path.is_file()
-        installer_ok = (not (sys.platform == "win32")) or installer_path.is_file()
-
-        if exe_ok and installer_ok:
-            print(f"✅ Smoke Test Success: All possible artifacts created.")
-            sys.exit(0)
-        else:
-            print(f"❌ Smoke Test Failed: Missing output files. Found EXE: {exe_ok}, Found Installer: {installer_path.is_file() if sys.platform == 'win32' else 'skipped'}.")
-            sys.exit(1)
+        log_queue = queue.Queue(); logger = logging.getLogger('SmokeTest'); logger.setLevel(logging.INFO); queue_handler = QueueHandler(log_queue); logger.addHandler(queue_handler)
+        def run_test():
+            def log_from_queue():
+                while not log_queue.empty(): print(log_queue.get_nowait())
+            # Use mutable lists to store callback results
+            validation_status, build_status, installer_status = [], [], []
+            validation_complete, build_complete, installer_complete = threading.Event(), threading.Event(), threading.Event()
+            def on_validation_complete(s): validation_status.append(s); validation_complete.set()
+            def on_build_complete(s): build_status.append(s); build_complete.set()
+            def on_installer_complete(s): installer_status.append(s); installer_complete.set()
+            # 1. Validate
+            env_manager = EnvManager(logger); env_manager.validate_environment(on_validation_complete)
+            logger.info("Waiting for environment validation..."); completed = validation_complete.wait(timeout=300)
+            if not (completed and validation_status and validation_status[0]): logger.error("❌ Smoke Test Failed: Environment validation failed or timed out."); sys.exit(1)
+            # 2. Build
+            build_orchestrator = BuildOrchestrator(logger, env_manager)
+            test_app_path = Path("./smoke_test_app.py"); test_app_path.write_text("print('Hello from smoke test app!')")
+            smoke_settings = {"script_path": str(test_app_path), "exe_name": "SmokeTestApp", "output_dir": "./dist_smoke", "one_file": True, "windowed": False, "clean_build": True}
+            build_orchestrator.build(smoke_settings, on_build_complete)
+            logger.info("Build triggered. Waiting for completion..."); completed = build_complete.wait(timeout=300)
+            if not (completed and build_status and build_status[0]): logger.error("❌ Smoke Test Failed: Build process failed or timed out."); sys.exit(1)
+            # 3. Installer
+            if sys.platform == "win32":
+                installer_maker = InstallerMaker(logger)
+                installer_settings = {"app_name": "SmokeTestApp", "version": "1.0", "output_dir": "./installers_smoke", "desktop_shortcut": True}
+                installer_maker.build_nsis(installer_settings, smoke_settings, {}, on_installer_complete)
+                logger.info("Installer build triggered. Waiting for completion..."); completed = installer_complete.wait(timeout=120)
+                if not (completed and installer_status and installer_status[0]): logger.error("❌ Smoke Test Failed: Installer creation failed or timed out."); sys.exit(1)
+            else: logger.info("ℹ️ Skipping NSIS installer test on non-Windows platform.")
+            # 4. Verify
+            exe_path = Path("./dist_smoke/SmokeTestApp.exe") if sys.platform == "win32" else Path("./dist_smoke/SmokeTestApp")
+            installer_path = Path("./installers_smoke/Setup_SmokeTestApp_1.0.exe")
+            exe_ok = exe_path.is_file(); installer_ok = (not (sys.platform == "win32")) or installer_path.is_file()
+            if exe_ok and installer_ok: logger.info(f"✅ Smoke Test Success: All possible artifacts created.")
+            else: logger.error(f"❌ Smoke Test Failed: Missing output files. Found EXE: {exe_ok}, Found Installer: {installer_path.is_file() if sys.platform == 'win32' else 'skipped'}.")
+        test_thread = threading.Thread(target=run_test)
+        test_thread.start()
+        while test_thread.is_alive():
+            try:
+                while True: print(log_queue.get_nowait())
+            except queue.Empty: pass
+            time.sleep(0.1)
+        # Final log drain
+        try:
+            while True: print(log_queue.get_nowait())
+        except queue.Empty: pass
     else:
         app = Py2WinPremiumApp()
         app.mainloop()

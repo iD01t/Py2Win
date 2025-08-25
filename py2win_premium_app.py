@@ -164,7 +164,14 @@ class BuildOrchestrator:
             for p in p_settings.get('data_paths', []):
                 sp = os.path.abspath(p); dest = os.path.basename(sp) if os.path.isdir(sp) else "."
                 cmd.append(f"--add-data={sp}{(';' if os.name == 'nt' else ':')}{dest}")
-            self.logger.info("Building with PyInstaller..."); self.logger.info(f"Command: {' '.join(cmd)}")
+for p in p_settings.get('data_paths', []):
+                sp = os.path.abspath(p); dest = os.path.basename(sp) if os.path.isdir(sp) else "."
+                cmd.append(f"--add-data={sp}{(';' if os.name == 'nt' else ':')}{dest}")
+            self.logger.info("Building with PyInstaller...")
+            self.logger.info("Command: %s", ' '.join(cmd))  # Use string formatting to prevent log injection
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
+            if process.wait() == 0:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
             if process.wait() == 0:

@@ -1,0 +1,26 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+build/
+dist/
+dist_smoke/
+installers/
+packages/
+
+# PyInstaller files
+*.spec
+
+# Pynsist and NSIS config files
+*.cfg
+*.nsi
+
+# Virtual environment and downloaded tools
+build_env/
+.tools/
+
+# Temporary test files
+smoke_test_app.py

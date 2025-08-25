@@ -119,7 +119,16 @@ class BuildOrchestrator:
     def __init__(self, app_instance=None):
         self.app = app_instance
         try: self.console = self.app.console if self.app else None
-        except AttributeError: self.console = None
+class BuildOrchestrator:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        try:
+            self.console = self.app.console if self.app else None
+        except AttributeError:
+            self.console = None
+        self.env_manager = EnvManager(app_instance)
+    def log(self, message): log_message(self.console, message)
+    def build(self, project_settings, on_complete=None):
         self.env_manager = EnvManager(app_instance)
     def log(self, message): log_message(self.console, message)
     def build(self, project_settings, on_complete=None):

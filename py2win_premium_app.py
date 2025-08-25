@@ -318,7 +318,20 @@ self.log("Starting NSIS installer build..."); success = False
             if on_complete: on_complete(success)
     def _get_output_path(self, i_settings):
         app_name = i_settings.get('app_name', 'MyApp'); version = i_settings.get('version', '1.0')
-        output_dir = Path(i_settings.get('output_dir', './installers')); output_dir.mkdir(exist_ok=True)
+# Import os.path for secure path handling
+# Import pathlib for Path objects
+import os.path
+from pathlib import Path
+
+def _get_output_path(self, i_settings):
+    app_name = i_settings.get('app_name', 'MyApp')
+    version = i_settings.get('version', '1.0')
+    base_dir = './installers'
+    output_dir = Path(os.path.realpath(os.path.join(base_dir, i_settings.get('output_dir', ''))))
+    if not output_dir.is_relative_to(Path(base_dir).resolve()):
+        raise ValueError("Invalid output directory")
+    output_dir.mkdir(exist_ok=True, parents=True)
+    return output_dir / f"Setup_{app_name}_{version}.exe"
         return output_dir / f"Setup_{app_name}_{version}.exe"
     def _sign_installer(self, installer_path, s_settings):
         tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')

@@ -184,7 +184,30 @@ class InstallerMaker:
     def __init__(self, app_instance=None):
         self.app = app_instance
         try: self.console = self.app.console if self.app else None
-        except AttributeError: self.console = None
+if on_complete: on_complete(success)
+
+class InstallerMaker:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        try: self.console = self.app.console if self.app else None
+        except Exception: self.console = None
+        self.nsis_provider = NSISProvider(app_instance)
+    def log(self, message): log_message(self.console, message)
+    def build_nsis(self, installer_settings, project_settings, security_settings, on_complete=None):
+        thread = threading.Thread(target=self.nsis_provider.build, args=(installer_settings, project_settings, security_settings, on_complete), daemon=True)
+        thread.start(); return thread
+
+class NSISProvider:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        try: self.console = self.app.console if self.app else None
+        except Exception: self.console = None
+    def log(self, message): log_message(self.console, message)
+    def _check_nsis(self):
+        if NSIS_EXE_PATH.is_file():
+            if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK): os.chmod(NSIS_EXE_PATH, 0o755)
+            self.log("makensis.exe found and executable."); return True
+        self.log("makensis.exe not found. Attempting to download and extract NSIS...")
         self.nsis_provider = NSISProvider(app_instance)
     def log(self, message): log_message(self.console, message)
     def build_nsis(self, installer_settings, project_settings, security_settings, on_complete=None):

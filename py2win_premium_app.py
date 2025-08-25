@@ -215,7 +215,16 @@ class NSISProvider:
     def __init__(self, app_instance=None):
         self.app = app_instance
         try: self.console = self.app.console if self.app else None
-        except AttributeError: self.console = None
+class NSISProvider:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        try:
+            self.console = self.app.console if self.app else None
+        except Exception:
+            self.console = None
+    def log(self, message): log_message(self.console, message)
+    def _check_nsis(self):
+        if NSIS_EXE_PATH.is_file():
     def log(self, message): log_message(self.console, message)
     def _check_nsis(self):
         if NSIS_EXE_PATH.is_file():

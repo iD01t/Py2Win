@@ -36,7 +36,12 @@ except ImportError:
 
 # --- CONSTANTS ---
 APP_NAME = "Py2Win Premium, iD01t Productions"
-APP_VERSION = "3.0.1" # Incremented for bugfix
+# --- CONSTANTS ---
+APP_NAME = "Py2Win Premium, iD01t Productions"
+APP_VERSION = "3.0.1"
+UPDATE_URL = "https://gist.githubusercontent.com/jules-at-gh/f575f812ce4205428a16be649f448b11/raw/py2win_version.txt"
+VENV_DIR = Path("./build_env")
+TOOLS_DIR = Path("./.tools")
 UPDATE_URL = "https://gist.githubusercontent.com/jules-at-gh/f575f812ce4205428a16be649f448b11/raw/py2win_version.txt"
 VENV_DIR = Path("./build_env")
 TOOLS_DIR = Path("./.tools")

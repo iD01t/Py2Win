@@ -173,7 +173,14 @@ class BuildOrchestrator:
         start_time = time.time(); success = False; version_file = None
         try:
             pyinstaller_exe = self.env_manager.python_executable.parent / "pyinstaller"
-            dist_path = Path(p_settings.get('output_dir', './dist')); work_path = Path('./build')
+start_time = time.time(); success = False; version_file = None
+        try:
+            pyinstaller_exe = self.env_manager.python_executable.parent / "pyinstaller"
+            # Use os.path.abspath to resolve relative paths and os.path.normpath to remove any '..' components
+            dist_path = Path(os.path.normpath(os.path.abspath(p_settings.get('output_dir', './dist')))); work_path = Path(os.path.normpath(os.path.abspath('./build')))
+            if p_settings.get('clean_build', True):
+                self.log("🧹 Cleaning previous build files...");
+                if dist_path.exists(): shutil.rmtree(dist_path)
             if p_settings.get('clean_build', True):
                 self.log("🧹 Cleaning previous build files...");
                 if dist_path.exists(): shutil.rmtree(dist_path)

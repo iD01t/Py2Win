@@ -143,7 +143,31 @@ class BuildOrchestrator:
         with os.fdopen(fd, "w", encoding="utf-8") as f: f.write(ver_file_content)
         return path
     def _build_in_background(self, p_settings, on_complete=None):
-        if not p_settings.get('script_path') or not Path(p_settings.get('script_path')).exists():
+# Import os.path for secure path operations
+    # Import pathlib for Path manipulation
+    def _build_in_background(self, p_settings, on_complete=None):
+        script_path = p_settings.get('script_path')
+        if not script_path or not os.path.exists(os.path.abspath(script_path)):
+            self.log("❌ Build failed: Python script not specified or not found."); on_complete and on_complete(False); return
+        if self.app: self.app.after(0, self.app.update_status, "Starting build...", 0)
+        start_time = time.time(); success = False; version_file = None
+        try:
+            pyinstaller_exe = self.env_manager.python_executable.parent / "pyinstaller"
+            dist_path = Path(p_settings.get('output_dir', './dist')); work_path = Path('./build')
+            if p_settings.get('clean_build', True):
+                self.log("🧹 Cleaning previous build files...");
+                if dist_path.exists(): shutil.rmtree(dist_path)
+                if work_path.exists(): shutil.rmtree(work_path)
+                self.log("Clean complete.")
+            version_file = self._create_version_file(p_settings)
+            cmd = [str(pyinstaller_exe), os.path.abspath(script_path), "--noconfirm", f"--version-file={version_file}"]
+            cmd.extend(["--name", p_settings.get('exe_name', 'MyApp')]); cmd.extend(["--distpath", str(dist_path)]); cmd.extend(["--workpath", str(work_path)])
+            if p_settings.get('one_file', True): cmd.append("--onefile")
+            cmd.append("--windowed" if p_settings.get('windowed', True) else "--console")
+            if p := p_settings.get('icon_path'): cmd.extend(["--icon", str(p)])
+            if p_settings.get('use_upx') and shutil.which("upx"): cmd.extend(["--upx-dir", str(Path(shutil.which("upx")).parent)])
+            for hi in p_settings.get('hidden_imports', []): cmd.extend(["--hidden-import", hi])
+            for ex in p_settings.get('exclude_modules', []): cmd.extend(["--exclude-module", ex])
             self.log("❌ Build failed: Python script not specified or not found."); on_complete and on_complete(False); return
         if self.app: self.app.after(0, self.app.update_status, "Starting build...", 0)
         start_time = time.time(); success = False; version_file = None

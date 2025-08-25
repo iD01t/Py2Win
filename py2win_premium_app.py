@@ -229,7 +229,14 @@ class NSISProvider:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
             if process.wait() == 0:
-                self.logger.info(f"✅ NSIS installer built successfully: {output_exe_path}"); self._sign_installer(output_exe_path, s_settings); success = True
+process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
+            if process.wait() == 0:
+                # import html
+                self.logger.info(f"✅ NSIS installer built successfully: {html.escape(str(output_exe_path))}"); self._sign_installer(output_exe_path, s_settings); success = True
+            else: self.logger.error("❌ NSIS build failed.")
+        except Exception as e: self.logger.error(f"❌ An unexpected error occurred during installer build: {e}")
+        finally:
             else: self.logger.error("❌ NSIS build failed.")
         except Exception as e: self.logger.error(f"❌ An unexpected error occurred during installer build: {e}")
         finally:

@@ -221,7 +221,15 @@ class NSISProvider:
         self.log("Starting NSIS installer build..."); success = False
         try:
             if not self._check_nsis(): return
-            dist_dir = Path(p_settings.get('output_dir', './dist'))
+self.log("Starting NSIS installer build..."); success = False
+        try:
+            if not self._check_nsis(): return
+            # Import os.path for secure path handling
+            # Use os.path.abspath() to get the absolute path and os.path.normpath() to normalize it
+            dist_dir = Path(os.path.normpath(os.path.abspath(p_settings.get('output_dir', './dist'))))
+            if not dist_dir.exists() or not any(dist_dir.iterdir()): self.log("❌ Dist directory is empty. Build the application first."); return
+
+            output_exe_path = self._get_output_path(i_settings)
             if not dist_dir.exists() or not any(dist_dir.iterdir()): self.log("❌ Dist directory is empty. Build the application first."); return
 
             output_exe_path = self._get_output_path(i_settings)

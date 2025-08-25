@@ -269,7 +269,17 @@ def _check_nsis(self):
         try:
             with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
             self.log("Downloaded NSIS zip. Extracting...")
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref: zip_ref.extractall(NSIS_DIR)
+try:
+            with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
+            self.log("Downloaded NSIS zip. Extracting...")
+            # import os.path
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                for file in zip_ref.namelist():
+                    if os.path.abspath(os.path.join(NSIS_DIR, file)).startswith(os.path.abspath(NSIS_DIR)):
+                        zip_ref.extract(file, NSIS_DIR)
+            zip_path.unlink()
+            if NSIS_EXE_PATH.is_file():
+                if sys.platform != "win32":
             zip_path.unlink()
             if NSIS_EXE_PATH.is_file():
                 if sys.platform != "win32":

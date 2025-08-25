@@ -58,7 +58,16 @@ def log_message(console_widget, message):
 
 class Tooltip:
     def __init__(self, widget, text):
-        self.widget = widget; self.text = text; self.tooltip_window = None
+class Tooltip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+        widget.bind("<Enter>", self._show)
+        widget.bind("<Leave>", self._hide)
+    def _show(self, _=None):
+        if self.tooltip_window or not self.text: return
+        x, y, _, _ = self.widget.bbox("insert"); x += self.widget.winfo_rootx() + 25; y += self.widget.winfo_rooty() + 25
         widget.bind("<Enter>", self._show); widget.bind("<Leave>", self._hide)
     def _show(self, _=None):
         if self.tooltip_window or not self.text: return

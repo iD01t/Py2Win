@@ -253,7 +253,14 @@ def _check_nsis(self):
     def _sign_installer(self, installer_path, s_settings):
         tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
         if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.log("Code signing skipped: tool or certificate not provided or found."); return
-        self.log(f"Signing installer: {installer_path}"); cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
+def _sign_installer(self, installer_path, s_settings):
+        tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
+        if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.log("Code signing skipped: tool or certificate not provided or found."); return
+        self.log(f"Signing installer: {installer_path}")
+        cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            self.log("✅ Installer signed successfully.")
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             self.log("✅ Installer signed successfully.")

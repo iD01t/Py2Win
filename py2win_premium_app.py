@@ -171,7 +171,14 @@ for p in p_settings.get('data_paths', []):
             self.logger.info("Command: %s", ' '.join(cmd))  # Use string formatting to prevent log injection
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
-            if process.wait() == 0:
+self.logger.info("Building with PyInstaller..."); self.logger.info(f"Command: {' '.join(cmd)}")
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
+            stdout, stderr = process.communicate()
+            if process.returncode == 0:
+                duration = round(time.time() - start_time, 2); success = True
+                self.logger.info(f"✅ Build successful in {duration} seconds.")
+            else: self.logger.error(f"❌ Build failed with exit code {process.returncode}.")
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
 cmd.append(f"--add-data={sp}{(';' if os.name == 'nt' else ':')}{dest}")
             self.logger.info("Building with PyInstaller..."); self.logger.info(f"Command: {' '.join(cmd)}")

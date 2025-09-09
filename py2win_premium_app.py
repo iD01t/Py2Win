@@ -16,6 +16,7 @@ import time
 import webbrowser
 import tempfile
 import logging
+import html
 from pathlib import Path
 from tkinter import filedialog, messagebox, Listbox
 from importlib import metadata
@@ -111,7 +112,6 @@ class EnvManager:
         except (subprocess.CalledProcessError, FileNotFoundError) as e: raise RuntimeError(f"Failed to check/install packages: {e}")
 
 class BuildOrchestrator:
-class BuildOrchestrator:
     def __init__(self, logger, env_manager):
         self.logger = logger
         self.env_manager = env_manager
@@ -124,37 +124,54 @@ class BuildOrchestrator:
     def _create_version_file(self, p_settings):
         exe_name = p_settings.get('exe_name', 'MyApp')
         ver_info = {
-        self.logger = logger; self.env_manager = env_manager
-    def build(self, project_settings, on_complete=None):
-        thread = threading.Thread(target=self._build_in_background, args=(project_settings, on_complete), daemon=True)
-        thread.start(); return thread
-    def _create_version_file(self, p_settings):
-        exe_name = p_settings.get('exe_name', 'MyApp')
-        ver_info = {
             "CompanyName": p_settings.get('company_name', 'My Company'), "FileDescription": p_settings.get('file_description', 'Packaged Python Application'),
             "FileVersion": p_settings.get('file_version', '1.0.0.0'), "InternalName": exe_name,
             "LegalCopyright": p_settings.get('legal_copyright', f'Copyright {time.strftime("%Y")}'), "OriginalFilename": f"{exe_name}.exe",
             "ProductName": p_settings.get('product_name', exe_name), "ProductVersion": p_settings.get('product_version', '1.0.0.0'),
         }
-        ver_file_content = f"""# UTF-8\nVSVersionInfo(\n  ffi=FixedFileInfo(\n    filevers=({",".join(ver_info['FileVersion'].split('.'))}),\n    prodvers=({",".join(ver_info['ProductVersion'].split('.'))}),\n    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),\n  kids=[\n    StringFileInfo([StringTable('040904B0', [\n        StringStruct('CompanyName', '{ver_info["CompanyName"]}'),\n        StringStruct('FileDescription', '{ver_info["FileDescription"]}'),\n        StringStruct('FileVersion', '{ver_info["FileVersion"]}'),\n        StringStruct('InternalName', '{ver_info["InternalName"]}'),\n        StringStruct('LegalCopyright', '{ver_info["LegalCopyright"]}'),\n        StringStruct('OriginalFilename', '{ver_info["OriginalFilename"]}'),\n        StringStruct('ProductName', '{ver_info["ProductName"]}'),\n        StringStruct('ProductVersion', '{ver_info["ProductVersion"]}')])]),\n    VarFileInfo([VarStruct('Translation', [1033, 1200])])])"""
+        ver_file_content = f"""# UTF-8
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=({",".join(ver_info['FileVersion'].split('.'))}),
+    prodvers=({",".join(ver_info['ProductVersion'].split('.'))}),
+    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
+  kids=[
+    StringFileInfo([StringTable('040904B0', [
+        StringStruct('CompanyName', '{ver_info["CompanyName"]}'),
+        StringStruct('FileDescription', '{ver_info["FileDescription"]}'),
+        StringStruct('FileVersion', '{ver_info["FileVersion"]}'),
+        StringStruct('InternalName', '{ver_info["InternalName"]}'),
+        StringStruct('LegalCopyright', '{ver_info["LegalCopyright"]}'),
+        StringStruct('OriginalFilename', '{ver_info["OriginalFilename"]}'),
+        StringStruct('ProductName', '{ver_info["ProductName"]}'),
+        StringStruct('ProductVersion', '{ver_info["ProductVersion"]}')])]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])])"""
         fd, path = tempfile.mkstemp(prefix="py2win_ver_", suffix=".txt");
         with os.fdopen(fd, "w", encoding="utf-8") as f: f.write(ver_file_content)
         return path
+
     def _build_in_background(self, p_settings, on_complete=None):
         if not p_settings.get('script_path') or not Path(p_settings.get('script_path')).exists():
-            self.logger.error("❌ Build failed: Python script not specified or not found."); on_complete and on_complete(False); return
-        start_time = time.time(); success = False; version_file = None
+            self.logger.error("❌ Build failed: Python script not specified or not found.")
+            if on_complete: on_complete(False)
+            return
+        start_time = time.time()
+        success = False
+        version_file = None
         try:
             pyinstaller_exe = self.env_manager.python_executable.parent / "pyinstaller"
-            dist_path = Path(p_settings.get('output_dir', './dist')); work_path = Path('./build')
+            dist_path = Path(p_settings.get('output_dir', './dist'))
+            work_path = Path('./build')
             if p_settings.get('clean_build', True):
-                self.logger.info("🧹 Cleaning previous build files...");
+                self.logger.info("🧹 Cleaning previous build files...")
                 if dist_path.exists(): shutil.rmtree(dist_path)
                 if work_path.exists(): shutil.rmtree(work_path)
                 self.logger.info("Clean complete.")
             version_file = self._create_version_file(p_settings)
             cmd = [str(pyinstaller_exe), p_settings['script_path'], "--noconfirm", f"--version-file={version_file}"]
-            cmd.extend(["--name", p_settings.get('exe_name', 'MyApp')]); cmd.extend(["--distpath", str(dist_path)]); cmd.extend(["--workpath", str(work_path)])
+            cmd.extend(["--name", p_settings.get('exe_name', 'MyApp')])
+            cmd.extend(["--distpath", str(dist_path)])
+            cmd.extend(["--workpath", str(work_path)])
             if p_settings.get('one_file', True): cmd.append("--onefile")
             cmd.append("--windowed" if p_settings.get('windowed', True) else "--console")
             if p := p_settings.get('icon_path'): cmd.extend(["--icon", str(p)])
@@ -162,46 +179,27 @@ class BuildOrchestrator:
             for hi in p_settings.get('hidden_imports', []): cmd.extend(["--hidden-import", hi])
             for ex in p_settings.get('exclude_modules', []): cmd.extend(["--exclude-module", ex])
             for p in p_settings.get('data_paths', []):
-                sp = os.path.abspath(p); dest = os.path.basename(sp) if os.path.isdir(sp) else "."
-                cmd.append(f"--add-data={sp}{(';' if os.name == 'nt' else ':')}{dest}")
-for p in p_settings.get('data_paths', []):
-                sp = os.path.abspath(p); dest = os.path.basename(sp) if os.path.isdir(sp) else "."
+                sp = os.path.abspath(p)
+                dest = os.path.basename(sp) if os.path.isdir(sp) else "."
                 cmd.append(f"--add-data={sp}{(';' if os.name == 'nt' else ':')}{dest}")
             self.logger.info("Building with PyInstaller...")
             self.logger.info("Command: %s", ' '.join(cmd))  # Use string formatting to prevent log injection
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
-self.logger.info("Building with PyInstaller..."); self.logger.info(f"Command: {' '.join(cmd)}")
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
-            stdout, stderr = process.communicate()
-            if process.returncode == 0:
-                duration = round(time.time() - start_time, 2); success = True
-                self.logger.info(f"✅ Build successful in {duration} seconds.")
-            else: self.logger.error(f"❌ Build failed with exit code {process.returncode}.")
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-cmd.append(f"--add-data={sp}{(';' if os.name == 'nt' else ':')}{dest}")
-            self.logger.info("Building with PyInstaller..."); self.logger.info(f"Command: {' '.join(cmd)}")
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            # import html
-            for line in iter(process.stdout.readline, ''): self.logger.info(html.escape(line.strip()))
+            for line in iter(process.stdout.readline, ''):
+                self.logger.info(html.escape(line.strip()))
             if process.wait() == 0:
-                duration = round(time.time() - start_time, 2); success = True
+                duration = round(time.time() - start_time, 2)
+                success = True
                 self.logger.info(f"✅ Build successful in {duration} seconds.")
-            if process.wait() == 0:
-                duration = round(time.time() - start_time, 2); success = True
-                self.logger.info(f"✅ Build successful in {duration} seconds.")
-if process.wait() == 0:
-                duration = round(time.time() - start_time, 2); success = True
-                self.logger.info(f"✅ Build successful in {duration} seconds.")
-            else: self.logger.error("❌ Build failed with exit code %d.", process.returncode)  # Use string formatting to prevent log injection
-        except Exception as e: self.logger.error(f"❌ An unexpected error occurred during build: {e}")
+            else:
+                self.logger.error("❌ Build failed with exit code %d.", process.returncode)
+        except Exception as e:
+            self.logger.error(f"❌ An unexpected error occurred during build: {e}")
         finally:
-            if version_file and os.path.exists(version_file): os.remove(version_file)
-        except Exception as e: self.logger.error(f"❌ An unexpected error occurred during build: {e}")
-        finally:
-            if version_file and os.path.exists(version_file): os.remove(version_file)
-            if on_complete: on_complete(success)
+            if version_file and os.path.exists(version_file):
+                os.remove(version_file)
+            if on_complete:
+                on_complete(success)
 
 class InstallerMaker:
     def __init__(self, logger):
@@ -209,79 +207,92 @@ class InstallerMaker:
         self.nsis_provider = NSISProvider(logger)
     def build_nsis(self, installer_settings, project_settings, security_settings, on_complete=None):
         thread = threading.Thread(target=self.nsis_provider.build, args=(installer_settings, project_settings, security_settings, on_complete), daemon=True)
-        thread.start(); return thread
+        thread.start()
+        return thread
 
 class NSISProvider:
     def __init__(self, logger):
         self.logger = logger
     def _check_nsis(self):
         if NSIS_EXE_PATH.is_file():
-            if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK): os.chmod(NSIS_EXE_PATH, 0o755)
-            self.logger.info("makensis.exe found and executable."); return True
+            if sys.platform != "win32" and not os.access(NSIS_EXE_PATH, os.X_OK):
+                os.chmod(NSIS_EXE_PATH, 0o755)
+            self.logger.info("makensis.exe found and executable.")
+            return True
         self.logger.info("makensis.exe not found. Attempting to download and extract NSIS...")
-        TOOLS_DIR.mkdir(exist_ok=True); zip_path = TOOLS_DIR / "nsis.zip"
+        TOOLS_DIR.mkdir(exist_ok=True)
+        zip_path = TOOLS_DIR / "nsis.zip"
         try:
-            with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file: shutil.copyfileobj(response, out_file)
+            with urllib.request.urlopen(NSIS_URL) as response, open(zip_path, 'wb') as out_file:
+                shutil.copyfileobj(response, out_file)
             self.logger.info("Downloaded NSIS zip. Extracting...")
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref: zip_ref.extractall(NSIS_DIR)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(NSIS_DIR)
             zip_path.unlink()
             if NSIS_EXE_PATH.is_file():
-                if sys.platform != "win32": os.chmod(NSIS_EXE_PATH, 0o755)
-                self.logger.info("✅ NSIS setup complete."); return True
-            self.logger.error(f"❌ Failed to find makensis.exe at {NSIS_EXE_PATH}"); return False
-        except Exception as e: self.logger.error(f"❌ Failed to download or extract NSIS: {e}"); return False
+                if sys.platform != "win32":
+                    os.chmod(NSIS_EXE_PATH, 0o755)
+                self.logger.info("✅ NSIS setup complete.")
+                return True
+            self.logger.error(f"❌ Failed to find makensis.exe at {NSIS_EXE_PATH}")
+            return False
+        except Exception as e:
+            self.logger.error(f"❌ Failed to download or extract NSIS: {e}")
+            return False
+
     def build(self, i_settings, p_settings, s_settings, on_complete=None):
-        self.logger.info("Starting NSIS installer build..."); success = False
+        self.logger.info("Starting NSIS installer build...")
+        success = False
         try:
-            if not self._check_nsis(): return
+            if not self._check_nsis():
+                return
             dist_dir = Path(p_settings.get('output_dir', './dist'))
-            if not dist_dir.exists() or not any(dist_dir.iterdir()): self.logger.error("❌ Dist directory is empty. Build the application first."); return
+            if not dist_dir.exists() or not any(dist_dir.iterdir()):
+                self.logger.error("❌ Dist directory is empty. Build the application first.")
+                return
             output_exe_path = self._get_output_path(i_settings)
             nsi_script = self._generate_nsi_script(i_settings, p_settings, dist_dir, output_exe_path)
-            nsi_file = Path("./installer.nsi"); nsi_file.write_text(nsi_script, encoding='utf-8')
-            self.logger.info("Generated .nsi script."); cmd = [str(NSIS_EXE_PATH), str(nsi_file)]
+            nsi_file = Path("./installer.nsi")
+            nsi_file.write_text(nsi_script, encoding='utf-8')
+            self.logger.info("Generated .nsi script.")
+            cmd = [str(NSIS_EXE_PATH), str(nsi_file)]
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
+            for line in iter(process.stdout.readline, ''):
+                self.logger.info(line.strip())
             if process.wait() == 0:
-process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            for line in iter(process.stdout.readline, ''): self.logger.info(line.strip())
-            if process.wait() == 0:
-                # import html
-                self.logger.info(f"✅ NSIS installer built successfully: {html.escape(str(output_exe_path))}"); self._sign_installer(output_exe_path, s_settings); success = True
-            else: self.logger.error("❌ NSIS build failed.")
-        except Exception as e: self.logger.error(f"❌ An unexpected error occurred during installer build: {e}")
+                self.logger.info(f"✅ NSIS installer built successfully: {html.escape(str(output_exe_path))}")
+                self._sign_installer(output_exe_path, s_settings)
+                success = True
+            else:
+                self.logger.error("❌ NSIS build failed.")
+        except Exception as e:
+            self.logger.error(f"❌ An unexpected error occurred during installer build: {e}")
         finally:
-            else: self.logger.error("❌ NSIS build failed.")
-        except Exception as e: self.logger.error(f"❌ An unexpected error occurred during installer build: {e}")
-        finally:
-            if on_complete: on_complete(success)
+            if on_complete:
+                on_complete(success)
+
     def _get_output_path(self, i_settings):
-        app_name = i_settings.get('app_name', 'MyApp'); version = i_settings.get('version', '1.0')
-        output_dir = Path(i_settings.get('output_dir', './installers')); output_dir.mkdir(exist_ok=True)
+        app_name = i_settings.get('app_name', 'MyApp')
+        version = i_settings.get('version', '1.0')
+        output_dir = Path(i_settings.get('output_dir', './installers'))
+        output_dir.mkdir(exist_ok=True)
         return output_dir / f"Setup_{app_name}_{version}.exe"
+
     def _sign_installer(self, installer_path, s_settings):
-        tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
-# Import os.path for secure path operations
-    # Import pathlib for Path objects
-    def _sign_installer(self, installer_path, s_settings):
-        tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
-        if not (tool and cert and os.path.abspath(tool).startswith(os.path.abspath(os.getcwd())) and os.path.abspath(cert).startswith(os.path.abspath(os.getcwd())) and Path(tool).exists() and Path(cert).exists()):
-            self.logger.info("Code signing skipped: tool or certificate not provided or found."); return
-        self.logger.info(f"Signing installer: {installer_path}"); cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
-        try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-def _sign_installer(self, installer_path, s_settings):
-        tool = s_settings.get('sign_tool_path'); cert = s_settings.get('cert_file'); pwd = s_settings.get('cert_pass')
-        if not (tool and cert and Path(tool).exists() and Path(cert).exists()): self.logger.info("Code signing skipped: tool or certificate not provided or found."); return
-        self.logger.info("Signing installer: %s", installer_path)  # Use %s formatting to prevent log injection
+        tool = s_settings.get('sign_tool_path')
+        cert = s_settings.get('cert_file')
+        pwd = s_settings.get('cert_pass')
+        if not (tool and cert and Path(tool).exists() and Path(cert).exists()):
+            self.logger.info("Code signing skipped: tool or certificate not provided or found.")
+            return
+        self.logger.info("Signing installer: %s", installer_path)
         cmd = [tool, "sign", "/f", cert, "/p", pwd, "/t", "http://timestamp.digicert.com", str(installer_path)]
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             self.logger.info("✅ Installer signed successfully.")
-        try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            self.logger.info("✅ Installer signed successfully.")
-        except subprocess.CalledProcessError as e: self.logger.error(f"❌ Code signing failed: {e.stderr}")
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"❌ Code signing failed: {e.stderr}")
+
     def _generate_nsi_script(self, i_settings, p_settings, dist_dir, output_exe):
         exe_name = f"{p_settings.get('exe_name', 'MyApp')}.exe"
         script = f"""
@@ -314,37 +325,59 @@ SectionEnd
 class AIAssistantDialog(customtkinter.CTkToplevel):
     def __init__(self, parent, script_path, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
-        self.title("AI Assistant"); self.geometry("600x400"); self.parent = parent; self.script_path = script_path
-        self.grid_columnconfigure(0, weight=1); self.grid_rowconfigure(1, weight=1)
+        self.title("AI Assistant")
+        self.geometry("600x400")
+        self.parent = parent
+        self.script_path = script_path
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
         customtkinter.CTkLabel(self, text="AI Analysis & Suggestions", font=("", 16, "bold")).grid(row=0, column=0, padx=15, pady=15)
-        self.textbox = customtkinter.CTkTextbox(self, wrap="word"); self.textbox.grid(row=1, column=0, padx=15, pady=15, sticky="nsew")
+        self.textbox = customtkinter.CTkTextbox(self, wrap="word")
+        self.textbox.grid(row=1, column=0, padx=15, pady=15, sticky="nsew")
         self.analyze()
     def analyze(self):
-        if not self.script_path or not Path(self.script_path).exists(): self.textbox.insert("end", "Please select a valid Python script first."); return
+        if not self.script_path or not Path(self.script_path).exists():
+            self.textbox.insert("end", "Please select a valid Python script first.")
+            return
         try:
-            with open(self.script_path, "r", encoding="utf-8") as f: content = f.read().lower()
+            with open(self.script_path, "r", encoding="utf-8") as f:
+                content = f.read().lower()
             suggestions = []
-            if "matplotlib" in content: suggestions.append("• Matplotlib detected: This library often requires its data files ('mpl-data'). Consider adding its folder to 'Additional Files & Folders'.")
-            if "pyside6" in content or "pyqt6" in content: suggestions.append("• Qt (PySide/PyQt) detected: Remember to add your UI files (.ui), resource files (.qrc), and translation files (.qm) as data. Common hidden imports include 'PySide6.QtSvg' and 'PySide6.plugins.platforms'.")
-            if "requests" in content: suggestions.append("• Requests detected: This library uses 'certifi' for SSL. PyInstaller usually handles this, but if you face SSL errors, ensure 'certifi' is included.")
-            if "pandas" in content: suggestions.append("• Pandas detected: This can be a large dependency. Ensure you are using a virtual environment. One-file mode may have a slower startup.")
-            if not suggestions: suggestions.append("Analysis complete. No common problematic libraries detected. If you have issues, check the PyInstaller build log for 'ModuleNotFound' errors.")
+            if "matplotlib" in content:
+                suggestions.append("• Matplotlib detected: This library often requires its data files ('mpl-data'). Consider adding its folder to 'Additional Files & Folders'.")
+            if "pyside6" in content or "pyqt6" in content:
+                suggestions.append("• Qt (PySide/PyQt) detected: Remember to add your UI files (.ui), resource files (.qrc), and translation files (.qm) as data. Common hidden imports include 'PySide6.QtSvg' and 'PySide6.plugins.platforms'.")
+            if "requests" in content:
+                suggestions.append("• Requests detected: This library uses 'certifi' for SSL. PyInstaller usually handles this, but if you face SSL errors, ensure 'certifi' is included.")
+            if "pandas" in content:
+                suggestions.append("• Pandas detected: This can be a large dependency. Ensure you are using a virtual environment. One-file mode may have a slower startup.")
+            if not suggestions:
+                suggestions.append("Analysis complete. No common problematic libraries detected. If you have issues, check the PyInstaller build log for 'ModuleNotFound' errors.")
             self.textbox.insert("end", "Analysis Results:\n\n" + "\n\n".join(suggestions))
-        except Exception as e: self.textbox.insert("end", f"Error during analysis: {e}")
+        except Exception as e:
+            self.textbox.insert("end", f"Error during analysis: {e}")
 
 class Py2WinPremiumApp(customtkinter.CTk):
     def __init__(self):
         super().__init__()
         # Window setup
-        self.title(f"{APP_NAME} v{APP_VERSION}"); self.geometry("1200x800"); customtkinter.set_appearance_mode("Dark"); customtkinter.set_default_color_theme("blue")
+        self.title(f"{APP_NAME} v{APP_VERSION}")
+        self.geometry("1200x800")
+        customtkinter.set_appearance_mode("Dark")
+        customtkinter.set_default_color_theme("blue")
         # App state
-        self.project_settings = {}; self.is_env_valid = False; self.ai_assistant_window = None; self.data_paths = []
+        self.project_settings = {}
+        self.is_env_valid = False
+        self.ai_assistant_window = None
+        self.data_paths = []
         # Build UI first
         self.create_widgets()
         # Setup logging system to use the UI
         self.setup_logging()
         # Now, instantiate backend classes with the logger
-        self.env_manager = EnvManager(self.logger); self.build_orchestrator = BuildOrchestrator(self.logger, self.env_manager); self.installer_maker = InstallerMaker(self.logger)
+        self.env_manager = EnvManager(self.logger)
+        self.build_orchestrator = BuildOrchestrator(self.logger, self.env_manager)
+        self.installer_maker = InstallerMaker(self.logger)
         # Finalize
         self.load_default_project()
 
@@ -371,164 +404,308 @@ class Py2WinPremiumApp(customtkinter.CTk):
         self.after(100, self._poll_log_queue)
 
     def create_widgets(self):
-        self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
-        self.sidebar_frame = customtkinter.CTkFrame(self, width=200, corner_radius=0); self.sidebar_frame.grid(row=0, column=0, rowspan=2, sticky="nsw"); self.sidebar_frame.grid_rowconfigure(6, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self.sidebar_frame = customtkinter.CTkFrame(self, width=200, corner_radius=0)
+        self.sidebar_frame.grid(row=0, column=0, rowspan=2, sticky="nsw")
+        self.sidebar_frame.grid_rowconfigure(6, weight=1)
         customtkinter.CTkLabel(self.sidebar_frame, text="Py2Win Premium", font=customtkinter.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 10))
-        self.validate_env_button = customtkinter.CTkButton(self.sidebar_frame, text="Validate Environment", command=self.validate_env); self.validate_env_button.grid(row=1, column=0, padx=20, pady=10)
-        self.ai_btn = customtkinter.CTkButton(self.sidebar_frame, text="🤖 AI Assistant", command=self.open_ai_assistant); self.ai_btn.grid(row=2, column=0, padx=20, pady=10)
-        self.update_btn = customtkinter.CTkButton(self.sidebar_frame, text="Check for Updates", command=self.check_for_updates); self.update_btn.grid(row=3, column=0, padx=20, pady=10)
-        self.main_frame = customtkinter.CTkFrame(self); self.main_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
-        self.tab_view = customtkinter.CTkTabview(self.main_frame); self.tab_view.pack(expand=True, fill="both", padx=5, pady=5)
-        tabs = ["Build", "Advanced", "Branding", "Installer", "Security"]; [self.tab_view.add(t) for t in tabs]
-        self.create_build_tab(self.tab_view.tab("Build")); self.create_advanced_tab(self.tab_view.tab("Advanced")); self.create_branding_tab(self.tab_view.tab("Branding")); self.create_installer_tab(self.tab_view.tab("Installer")); self.create_security_tab(self.tab_view.tab("Security"))
-        self.console_frame = customtkinter.CTkFrame(self); self.console_frame.grid(row=1, column=1, sticky="nsew", padx=10, pady=(0,10)); self.console_frame.grid_columnconfigure(0, weight=1)
-        self.console = customtkinter.CTkTextbox(self.console_frame, height=200); self.console.pack(expand=True, fill="both", padx=5, pady=5)
-        self.status_frame = customtkinter.CTkFrame(self.sidebar_frame, corner_radius=0); self.status_frame.grid(row=9, column=0, sticky="sew")
-        self.status_label = customtkinter.CTkLabel(self.status_frame, text="Ready", anchor="w"); self.status_label.pack(side="left", padx=10)
-        self.progress_bar = customtkinter.CTkProgressBar(self.status_frame); self.progress_bar.pack(side="right", padx=10, pady=10, fill="x", expand=True); self.progress_bar.set(0)
+        self.validate_env_button = customtkinter.CTkButton(self.sidebar_frame, text="Validate Environment", command=self.validate_env)
+        self.validate_env_button.grid(row=1, column=0, padx=20, pady=10)
+        self.ai_btn = customtkinter.CTkButton(self.sidebar_frame, text="🤖 AI Assistant", command=self.open_ai_assistant)
+        self.ai_btn.grid(row=2, column=0, padx=20, pady=10)
+        self.update_btn = customtkinter.CTkButton(self.sidebar_frame, text="Check for Updates", command=self.check_for_updates)
+        self.update_btn.grid(row=3, column=0, padx=20, pady=10)
+        self.main_frame = customtkinter.CTkFrame(self)
+        self.main_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        self.tab_view = customtkinter.CTkTabview(self.main_frame)
+        self.tab_view.pack(expand=True, fill="both", padx=5, pady=5)
+        tabs = ["Build", "Advanced", "Branding", "Installer", "Security"]
+        [self.tab_view.add(t) for t in tabs]
+        self.create_build_tab(self.tab_view.tab("Build"))
+        self.create_advanced_tab(self.tab_view.tab("Advanced"))
+        self.create_branding_tab(self.tab_view.tab("Branding"))
+        self.create_installer_tab(self.tab_view.tab("Installer"))
+        self.create_security_tab(self.tab_view.tab("Security"))
+        self.console_frame = customtkinter.CTkFrame(self)
+        self.console_frame.grid(row=1, column=1, sticky="nsew", padx=10, pady=(0,10))
+        self.console_frame.grid_columnconfigure(0, weight=1)
+        self.console = customtkinter.CTkTextbox(self.console_frame, height=200)
+        self.console.pack(expand=True, fill="both", padx=5, pady=5)
+        self.status_frame = customtkinter.CTkFrame(self.sidebar_frame, corner_radius=0)
+        self.status_frame.grid(row=9, column=0, sticky="sew")
+        self.status_label = customtkinter.CTkLabel(self.status_frame, text="Ready", anchor="w")
+        self.status_label.pack(side="left", padx=10)
+        self.progress_bar = customtkinter.CTkProgressBar(self.status_frame)
+        self.progress_bar.pack(side="right", padx=10, pady=10, fill="x", expand=True)
+        self.progress_bar.set(0)
 
     def create_build_tab(self, tab):
         tab.grid_columnconfigure(1, weight=1)
-        customtkinter.CTkLabel(tab, text="Python Script:").grid(row=0, column=0, padx=10, pady=10, sticky="w"); self.script_entry = customtkinter.CTkEntry(tab, width=400); self.script_entry.grid(row=0, column=1, padx=10, pady=10, sticky="ew"); Tooltip(self.script_entry, "The main .py or .pyw file of your application.")
+        customtkinter.CTkLabel(tab, text="Python Script:").grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        self.script_entry = customtkinter.CTkEntry(tab, width=400)
+        self.script_entry.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+        Tooltip(self.script_entry, "The main .py or .pyw file of your application.")
         customtkinter.CTkButton(tab, text="Browse...", command=self.browse_script).grid(row=0, column=2, padx=10, pady=10)
-        customtkinter.CTkLabel(tab, text="Executable Name:").grid(row=1, column=0, padx=10, pady=10, sticky="w"); self.exe_name_entry = customtkinter.CTkEntry(tab); self.exe_name_entry.grid(row=1, column=1, padx=10, pady=10, sticky="ew"); Tooltip(self.exe_name_entry, "The name of the final .exe file (without extension).")
-        customtkinter.CTkLabel(tab, text="Output Directory:").grid(row=2, column=0, padx=10, pady=10, sticky="w"); self.output_dir_entry = customtkinter.CTkEntry(tab); self.output_dir_entry.grid(row=2, column=1, padx=10, pady=10, sticky="ew"); Tooltip(self.output_dir_entry, "The folder where the final executable or app folder will be placed. Defaults to './dist'.")
+        customtkinter.CTkLabel(tab, text="Executable Name:").grid(row=1, column=0, padx=10, pady=10, sticky="w")
+        self.exe_name_entry = customtkinter.CTkEntry(tab)
+        self.exe_name_entry.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
+        Tooltip(self.exe_name_entry, "The name of the final .exe file (without extension).")
+        customtkinter.CTkLabel(tab, text="Output Directory:").grid(row=2, column=0, padx=10, pady=10, sticky="w")
+        self.output_dir_entry = customtkinter.CTkEntry(tab)
+        self.output_dir_entry.grid(row=2, column=1, padx=10, pady=10, sticky="ew")
+        Tooltip(self.output_dir_entry, "The folder where the final executable or app folder will be placed. Defaults to './dist'.")
         customtkinter.CTkButton(tab, text="Browse...", command=self.browse_output_dir).grid(row=2, column=2, padx=10, pady=10)
-        self.one_file_var = customtkinter.StringVar(value="on"); ofc = customtkinter.CTkCheckBox(tab, text="Single File Executable (--onefile)", variable=self.one_file_var, onvalue="on", offvalue="off"); ofc.grid(row=3, column=1, padx=10, pady=10, sticky="w"); Tooltip(ofc, "Package everything into a single .exe file. May have slower startup.")
-        self.windowed_var = customtkinter.StringVar(value="on"); wc = customtkinter.CTkCheckBox(tab, text="Windowed Application (--windowed)", variable=self.windowed_var, onvalue="on", offvalue="off"); wc.grid(row=4, column=1, padx=10, pady=10, sticky="w"); Tooltip(wc, "For GUI applications. Hides the black console window.")
-        customtkinter.CTkButton(tab, text="Build Executable", height=40, font=("", 16, "bold"), command=self.start_build).grid(row=5, column=0, columnspan=4, padx=20, pady=20, sticky="ew")
+        self.one_file_var = customtkinter.StringVar(value="on")
+        ofc = customtkinter.CTkCheckBox(tab, text="Single File Executable (--onefile)", variable=self.one_file_var, onvalue="on", offvalue="off")
+        ofc.grid(row=3, column=1, padx=10, pady=10, sticky="w")
+        Tooltip(ofc, "Package everything into a single .exe file. May have slower startup.")
+        self.windowed_var = customtkinter.StringVar(value="on")
+        wc = customtkinter.CTkCheckBox(tab, text="Windowed Application (--windowed)", variable=self.windowed_var, onvalue="on", offvalue="off")
+        wc.grid(row=4, column=1, padx=10, pady=10, sticky="w")
+        Tooltip(wc, "For GUI applications. Hides the black console window.")
+        self.build_button = customtkinter.CTkButton(tab, text="Build Executable", height=40, font=("", 16, "bold"), command=self.start_build)
+        self.build_button.grid(row=5, column=0, columnspan=4, padx=20, pady=20, sticky="ew")
 
     def create_advanced_tab(self, tab):
-        tab.grid_columnconfigure(0, weight=1); tab.grid_rowconfigure(3, weight=1)
-        options_frame = customtkinter.CTkFrame(tab); options_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew"); options_frame.grid_columnconfigure((0,1), weight=1)
-        self.clean_build_var = customtkinter.StringVar(value="on"); cbc = customtkinter.CTkCheckBox(options_frame, text="Clean Build", variable=self.clean_build_var, onvalue="on", offvalue="off"); cbc.grid(row=0, column=0, padx=10, pady=10, sticky="w"); Tooltip(cbc, "Deletes old 'build' and 'dist' folders before starting a new build.")
-        self.use_upx_var = customtkinter.StringVar(value="off"); upx_cb = customtkinter.CTkCheckBox(options_frame, text="Use UPX compression", variable=self.use_upx_var, onvalue="on", offvalue="off"); upx_cb.grid(row=0, column=1, padx=10, pady=10, sticky="w"); Tooltip(upx_cb, "Requires UPX in PATH. Reduces file size but may affect startup time.")
-        hid_frame = customtkinter.CTkFrame(tab); hid_frame.grid(row=1, column=0, padx=10, pady=6, sticky="ew"); hid_frame.grid_columnconfigure(1, weight=1)
-        customtkinter.CTkLabel(hid_frame, text="Hidden Imports:").grid(row=0, column=0, padx=10, pady=8, sticky="w"); self.hidden_entry = customtkinter.CTkEntry(hid_frame, placeholder_text="module_name"); self.hidden_entry.grid(row=0, column=1, padx=6, pady=8, sticky="ew"); Tooltip(self.hidden_entry, "Enter a module name that PyInstaller might miss and click 'Add'.")
+        tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(3, weight=1)
+        options_frame = customtkinter.CTkFrame(tab)
+        options_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        options_frame.grid_columnconfigure((0,1), weight=1)
+        self.clean_build_var = customtkinter.StringVar(value="on")
+        cbc = customtkinter.CTkCheckBox(options_frame, text="Clean Build", variable=self.clean_build_var, onvalue="on", offvalue="off")
+        cbc.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        Tooltip(cbc, "Deletes old 'build' and 'dist' folders before starting a new build.")
+        self.use_upx_var = customtkinter.StringVar(value="off")
+        upx_cb = customtkinter.CTkCheckBox(options_frame, text="Use UPX compression", variable=self.use_upx_var, onvalue="on", offvalue="off")
+        upx_cb.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+        Tooltip(upx_cb, "Requires UPX in PATH. Reduces file size but may affect startup time.")
+        hid_frame = customtkinter.CTkFrame(tab)
+        hid_frame.grid(row=1, column=0, padx=10, pady=6, sticky="ew")
+        hid_frame.grid_columnconfigure(1, weight=1)
+        customtkinter.CTkLabel(hid_frame, text="Hidden Imports:").grid(row=0, column=0, padx=10, pady=8, sticky="w")
+        self.hidden_entry = customtkinter.CTkEntry(hid_frame, placeholder_text="module_name")
+        self.hidden_entry.grid(row=0, column=1, padx=6, pady=8, sticky="ew")
+        Tooltip(self.hidden_entry, "Enter a module name that PyInstaller might miss and click 'Add'.")
         customtkinter.CTkButton(hid_frame, text="Add", width=80, command=self._add_hidden).grid(row=0, column=2, padx=6, pady=8)
-        self.hidden_list = Listbox(hid_frame, height=4, bg="#2B2B2B", fg="white", selectbackground="#1F6AA5", borderwidth=0, highlightthickness=1, highlightcolor="#565B5E", selectmode="extended"); self.hidden_list.grid(row=1, column=0, columnspan=2, padx=10, pady=(0,10), sticky="ew")
+        self.hidden_list = Listbox(hid_frame, height=4, bg="#2B2B2B", fg="white", selectbackground="#1F6AA5", borderwidth=0, highlightthickness=1, highlightcolor="#565B5E", selectmode="extended")
+        self.hidden_list.grid(row=1, column=0, columnspan=2, padx=10, pady=(0,10), sticky="ew")
         customtkinter.CTkButton(hid_frame, text="Remove Selected", command=self._remove_hidden).grid(row=1, column=2, padx=6, pady=(0,10))
-        exc_frame = customtkinter.CTkFrame(tab); exc_frame.grid(row=2, column=0, padx=10, pady=6, sticky="ew"); exc_frame.grid_columnconfigure(1, weight=1)
-        customtkinter.CTkLabel(exc_frame, text="Exclude Modules:").grid(row=0, column=0, padx=10, pady=8, sticky="w"); self.exclude_entry = customtkinter.CTkEntry(exc_frame, placeholder_text="module_name"); self.exclude_entry.grid(row=0, column=1, padx=6, pady=8, sticky="ew"); Tooltip(self.exclude_entry, "Enter a module name to exclude from the build to save space.")
+        exc_frame = customtkinter.CTkFrame(tab)
+        exc_frame.grid(row=2, column=0, padx=10, pady=6, sticky="ew")
+        exc_frame.grid_columnconfigure(1, weight=1)
+        customtkinter.CTkLabel(exc_frame, text="Exclude Modules:").grid(row=0, column=0, padx=10, pady=8, sticky="w")
+        self.exclude_entry = customtkinter.CTkEntry(exc_frame, placeholder_text="module_name")
+        self.exclude_entry.grid(row=0, column=1, padx=6, pady=8, sticky="ew")
+        Tooltip(self.exclude_entry, "Enter a module name to exclude from the build to save space.")
         customtkinter.CTkButton(exc_frame, text="Add", width=80, command=self._add_exclude).grid(row=0, column=2, padx=6, pady=8)
-        self.exclude_list = Listbox(exc_frame, height=4, bg="#2B2B2B", fg="white", selectbackground="#1F6AA5", borderwidth=0, highlightthickness=1, highlightcolor="#565B5E", selectmode="extended"); self.exclude_list.grid(row=1, column=0, columnspan=2, padx=10, pady=(0,10), sticky="ew")
+        self.exclude_list = Listbox(exc_frame, height=4, bg="#2B2B2B", fg="white", selectbackground="#1F6AA5", borderwidth=0, highlightthickness=1, highlightcolor="#565B5E", selectmode="extended")
+        self.exclude_list.grid(row=1, column=0, columnspan=2, padx=10, pady=(0,10), sticky="ew")
         customtkinter.CTkButton(exc_frame, text="Remove Selected", command=self._remove_exclude).grid(row=1, column=2, padx=6, pady=(0,10))
-        data_frame = customtkinter.CTkFrame(tab); data_frame.grid(row=3, column=0, padx=10, pady=6, sticky="nsew"); data_frame.grid_columnconfigure(0, weight=1); data_frame.grid_rowconfigure(1, weight=1)
+        data_frame = customtkinter.CTkFrame(tab)
+        data_frame.grid(row=3, column=0, padx=10, pady=6, sticky="nsew")
+        data_frame.grid_columnconfigure(0, weight=1)
+        data_frame.grid_rowconfigure(1, weight=1)
         customtkinter.CTkLabel(data_frame, text="Additional Files & Folders:").grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 0), sticky="w")
-        self.data_listbox = Listbox(data_frame, bg="#2B2B2B", fg="white", selectbackground="#1F6AA5", borderwidth=0, highlightthickness=1, highlightcolor="#565B5E", selectmode="extended"); self.data_listbox.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-        btns = customtkinter.CTkFrame(data_frame, fg_color="transparent"); btns.grid(row=1, column=1, padx=(0, 10), pady=10, sticky="ns")
-        customtkinter.CTkButton(btns, text="Add File(s)", command=self._add_data_files).grid(row=0, column=0, padx=5, pady=5); customtkinter.CTkButton(btns, text="Add Folder", command=self._add_data_folder).grid(row=1, column=0, padx=5, pady=5); customtkinter.CTkButton(btns, text="Remove", command=self._remove_selected_data).grid(row=2, column=0, padx=5, pady=5)
+        self.data_listbox = Listbox(data_frame, bg="#2B2B2B", fg="white", selectbackground="#1F6AA5", borderwidth=0, highlightthickness=1, highlightcolor="#565B5E", selectmode="extended")
+        self.data_listbox.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        btns = customtkinter.CTkFrame(data_frame, fg_color="transparent")
+        btns.grid(row=1, column=1, padx=(0, 10), pady=10, sticky="ns")
+        customtkinter.CTkButton(btns, text="Add File(s)", command=self._add_data_files).grid(row=0, column=0, padx=5, pady=5)
+        customtkinter.CTkButton(btns, text="Add Folder", command=self._add_data_folder).grid(row=1, column=0, padx=5, pady=5)
+        customtkinter.CTkButton(btns, text="Remove", command=self._remove_selected_data).grid(row=2, column=0, padx=5, pady=5)
 
     def create_branding_tab(self, tab):
-        tab.grid_columnconfigure(1, weight=1); customtkinter.CTkLabel(tab, text="EXE Metadata & Branding", font=customtkinter.CTkFont(size=16, weight="bold")).grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="w")
-        fields = {"Company Name:": "company_name", "Product Name:": "product_name", "File Description:": "file_description", "File Version (x.x.x.x):": "file_version", "Product Version (x.x.x.x):": "product_version", "Legal Copyright:": "legal_copyright"}; self.branding_entries = {}
+        tab.grid_columnconfigure(1, weight=1)
+        customtkinter.CTkLabel(tab, text="EXE Metadata & Branding", font=customtkinter.CTkFont(size=16, weight="bold")).grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky="w")
+
+        # Metadata fields
+        fields = {"Company Name:": "company_name", "Product Name:": "product_name", "File Description:": "file_description", "File Version (x.x.x.x):": "file_version", "Product Version (x.x.x.x):": "product_version", "Legal Copyright:": "legal_copyright"}
+        self.branding_entries = {}
         for i, (label, key) in enumerate(fields.items()):
-            customtkinter.CTkLabel(tab, text=label).grid(row=i+1, column=0, padx=10, pady=6, sticky="e"); entry = customtkinter.CTkEntry(tab); entry.grid(row=i+1, column=1, padx=10, pady=6, sticky="ew"); self.branding_entries[key] = entry; Tooltip(entry, f"Sets the '{label[:-1]}' field in the EXE's properties.")
-        self.branding_entries["company_name"].insert(0, "iD01t Productions"); self.branding_entries["file_version"].insert(0, "1.0.0.0"); self.branding_entries["product_version"].insert(0, "1.0.0.0"); self.branding_entries["legal_copyright"].insert(0, f"Copyright {time.strftime('%Y')} iD01t Productions")
+            customtkinter.CTkLabel(tab, text=label).grid(row=i+1, column=0, padx=10, pady=6, sticky="e")
+            entry = customtkinter.CTkEntry(tab)
+            entry.grid(row=i+1, column=1, padx=10, pady=6, sticky="ew")
+            self.branding_entries[key] = entry
+            Tooltip(entry, f"Sets the '{label[:-1]}' field in the EXE's properties.")
+
+        # Icon selection
+        customtkinter.CTkLabel(tab, text="Application Icon:").grid(row=len(fields)+1, column=0, padx=10, pady=6, sticky="e")
+        self.icon_entry = customtkinter.CTkEntry(tab, placeholder_text="path/to/your/icon.ico")
+        self.icon_entry.grid(row=len(fields)+1, column=1, padx=10, pady=6, sticky="ew")
+        Tooltip(self.icon_entry, "Path to the .ico file for the application executable.")
+        customtkinter.CTkButton(tab, text="Browse...", command=self.browse_icon).grid(row=len(fields)+1, column=2, padx=10, pady=6)
+
+        # Set default values
+        self.branding_entries["company_name"].insert(0, "iD01t Productions")
+        self.branding_entries["file_version"].insert(0, "1.0.0.0")
+        self.branding_entries["product_version"].insert(0, "1.0.0.0")
+        self.branding_entries["legal_copyright"].insert(0, f"Copyright {time.strftime('%Y')} iD01t Productions")
 
     def create_installer_tab(self, tab):
         tab.grid_columnconfigure(1, weight=1)
         customtkinter.CTkLabel(tab, text="Installer Settings", font=customtkinter.CTkFont(size=16, weight="bold")).grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="w")
-        self.inst_app_name = customtkinter.CTkEntry(tab, placeholder_text="App Name"); self.inst_app_name.grid(row=1, column=1, padx=10, pady=5, sticky="ew"); customtkinter.CTkLabel(tab, text="Installer App Name:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
-        self.inst_version = customtkinter.CTkEntry(tab, placeholder_text="1.0.0"); self.inst_version.grid(row=2, column=1, padx=10, pady=5, sticky="ew"); customtkinter.CTkLabel(tab, text="Installer Version:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
-        self.inst_output_dir = customtkinter.CTkEntry(tab, placeholder_text="./installers"); self.inst_output_dir.grid(row=3, column=1, padx=10, pady=5, sticky="ew"); customtkinter.CTkLabel(tab, text="Installer Output Dir:").grid(row=3, column=0, padx=10, pady=5, sticky="e")
-        options_frame = customtkinter.CTkFrame(tab, fg_color="transparent"); options_frame.grid(row=4, column=1, padx=10, pady=10, sticky="w")
-        self.desktop_shortcut_var = customtkinter.StringVar(value="on"); dsc = customtkinter.CTkCheckBox(options_frame, text="Desktop Shortcut", variable=self.desktop_shortcut_var, onvalue="on", offvalue="off"); dsc.pack(side="left", padx=10); Tooltip(dsc, "Create a shortcut to your app on the user's desktop.")
-        self.start_menu_var = customtkinter.StringVar(value="on"); smc = customtkinter.CTkCheckBox(options_frame, text="Start Menu Shortcut", variable=self.start_menu_var, onvalue="on", offvalue="off"); smc.pack(side="left", padx=10); Tooltip(smc, "Create a shortcut in the Windows Start Menu.")
-        customtkinter.CTkButton(tab, text="Build NSIS Installer", command=self.build_nsis_installer).grid(row=5, column=0, columnspan=2, padx=10, pady=20, sticky="ew")
+        self.inst_app_name = customtkinter.CTkEntry(tab, placeholder_text="App Name")
+        self.inst_app_name.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+        customtkinter.CTkLabel(tab, text="Installer App Name:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+        self.inst_version = customtkinter.CTkEntry(tab, placeholder_text="1.0.0")
+        self.inst_version.grid(row=2, column=1, padx=10, pady=5, sticky="ew")
+        customtkinter.CTkLabel(tab, text="Installer Version:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+        self.inst_output_dir = customtkinter.CTkEntry(tab, placeholder_text="./installers")
+        self.inst_output_dir.grid(row=3, column=1, padx=10, pady=5, sticky="ew")
+        customtkinter.CTkLabel(tab, text="Installer Output Dir:").grid(row=3, column=0, padx=10, pady=5, sticky="e")
+        options_frame = customtkinter.CTkFrame(tab, fg_color="transparent")
+        options_frame.grid(row=4, column=1, padx=10, pady=10, sticky="w")
+        self.desktop_shortcut_var = customtkinter.StringVar(value="on")
+        dsc = customtkinter.CTkCheckBox(options_frame, text="Desktop Shortcut", variable=self.desktop_shortcut_var, onvalue="on", offvalue="off")
+        dsc.pack(side="left", padx=10)
+        Tooltip(dsc, "Create a shortcut to your app on the user's desktop.")
+        self.start_menu_var = customtkinter.StringVar(value="on")
+        smc = customtkinter.CTkCheckBox(options_frame, text="Start Menu Shortcut", variable=self.start_menu_var, onvalue="on", offvalue="off")
+        smc.pack(side="left", padx=10)
+        Tooltip(smc, "Create a shortcut in the Windows Start Menu.")
+        self.installer_button = customtkinter.CTkButton(tab, text="Build NSIS Installer", command=self.build_nsis_installer)
+        self.installer_button.grid(row=5, column=0, columnspan=2, padx=10, pady=20, sticky="ew")
 
     def create_security_tab(self, tab):
         tab.grid_columnconfigure(1, weight=1)
         customtkinter.CTkLabel(tab, text="Code Signing (for signed installer)", font=customtkinter.CTkFont(size=16, weight="bold")).grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky="w")
-        customtkinter.CTkLabel(tab, text="Sign Tool Path:").grid(row=1, column=0, padx=10, pady=6, sticky="e"); self.sign_tool_entry = customtkinter.CTkEntry(tab, placeholder_text="C:\\...\\signtool.exe"); self.sign_tool_entry.grid(row=1, column=1, padx=10, pady=6, sticky="ew"); Tooltip(self.sign_tool_entry, "Path to signtool.exe, usually from the Windows SDK.")
+        customtkinter.CTkLabel(tab, text="Sign Tool Path:").grid(row=1, column=0, padx=10, pady=6, sticky="e")
+        self.sign_tool_entry = customtkinter.CTkEntry(tab, placeholder_text="C:\\...\\signtool.exe")
+        self.sign_tool_entry.grid(row=1, column=1, padx=10, pady=6, sticky="ew")
+        Tooltip(self.sign_tool_entry, "Path to signtool.exe, usually from the Windows SDK.")
         customtkinter.CTkButton(tab, text="Browse...", command=lambda: self.sign_tool_entry.insert(0, filedialog.askopenfilename(title="Select signtool.exe") or "")).grid(row=1, column=2, padx=10)
-        customtkinter.CTkLabel(tab, text="Certificate (.pfx):").grid(row=2, column=0, padx=10, pady=6, sticky="e"); self.cert_file_entry = customtkinter.CTkEntry(tab); self.cert_file_entry.grid(row=2, column=1, padx=10, pady=6, sticky="ew"); Tooltip(self.cert_file_entry, "Your .pfx code signing certificate file.")
+        customtkinter.CTkLabel(tab, text="Certificate (.pfx):").grid(row=2, column=0, padx=10, pady=6, sticky="e")
+        self.cert_file_entry = customtkinter.CTkEntry(tab)
+        self.cert_file_entry.grid(row=2, column=1, padx=10, pady=6, sticky="ew")
+        Tooltip(self.cert_file_entry, "Your .pfx code signing certificate file.")
         customtkinter.CTkButton(tab, text="Browse...", command=lambda: self.cert_file_entry.insert(0, filedialog.askopenfilename(title="Select .pfx certificate") or "")).grid(row=2, column=2, padx=10)
-        customtkinter.CTkLabel(tab, text="Password:").grid(row=3, column=0, padx=10, pady=6, sticky="e"); self.cert_pass_entry = customtkinter.CTkEntry(tab, show="*"); self.cert_pass_entry.grid(row=3, column=1, padx=10, pady=6, sticky="ew"); Tooltip(self.cert_pass_entry, "The password for your certificate file.")
+        customtkinter.CTkLabel(tab, text="Password:").grid(row=3, column=0, padx=10, pady=6, sticky="e")
+        self.cert_pass_entry = customtkinter.CTkEntry(tab, show="*")
+        self.cert_pass_entry.grid(row=3, column=1, padx=10, pady=6, sticky="ew")
+        Tooltip(self.cert_pass_entry, "The password for your certificate file.")
 
-    def _add_hidden(self): m = self.hidden_entry.get().strip(); self.hidden_list.insert("end", m) and self.hidden_entry.delete(0, "end") if m else None
-    def _remove_hidden(self): [self.hidden_list.delete(i) for i in sorted(self.hidden_list.curselection(), reverse=True)]
-    def _add_exclude(self): m = self.exclude_entry.get().strip(); self.exclude_list.insert("end", m) and self.exclude_entry.delete(0, "end") if m else None
-    def _remove_exclude(self): [self.exclude_list.delete(i) for i in sorted(self.exclude_list.curselection(), reverse=True)]
-    def _add_data_files(self): [self.data_paths.append(p) or self.data_listbox.insert("end", f"FILE: {p}") for p in filedialog.askopenfilenames(title="Select file(s) to bundle") if p not in self.data_paths]
-    def _add_data_folder(self): p = filedialog.askdirectory(title="Select folder to bundle"); self.data_paths.append(p) and self.data_listbox.insert("end", f"DIR:  {p}") if p and p not in self.data_paths else None
-    def _remove_selected_data(self): [self.data_listbox.delete(i) or self.data_paths.pop(i) for i in sorted(self.data_listbox.curselection(), reverse=True)]
+    def _add_hidden(self):
+        m = self.hidden_entry.get().strip()
+        if m:
+            self.hidden_list.insert("end", m)
+            self.hidden_entry.delete(0, "end")
+    def _remove_hidden(self):
+        [self.hidden_list.delete(i) for i in sorted(self.hidden_list.curselection(), reverse=True)]
+    def _add_exclude(self):
+        m = self.exclude_entry.get().strip()
+        if m:
+            self.exclude_list.insert("end", m)
+            self.exclude_entry.delete(0, "end")
+    def _remove_exclude(self):
+        [self.exclude_list.delete(i) for i in sorted(self.exclude_list.curselection(), reverse=True)]
+    def _add_data_files(self):
+        [self.data_paths.append(p) or self.data_listbox.insert("end", f"FILE: {p}") for p in filedialog.askopenfilenames(title="Select file(s) to bundle") if p not in self.data_paths]
+    def _add_data_folder(self):
+        p = filedialog.askdirectory(title="Select folder to bundle")
+        if p and p not in self.data_paths:
+            self.data_paths.append(p)
+            self.data_listbox.insert("end", f"DIR:  {p}")
+    def _remove_selected_data(self):
+        [self.data_listbox.delete(i) or self.data_paths.pop(i) for i in sorted(self.data_listbox.curselection(), reverse=True)]
 
-    def update_status(self, text, progress=None): self.status_label.configure(text=text); self.progress_bar.set(progress if progress is not None else self.progress_bar.get())
-    def validate_env(self): self.validate_env_button.configure(state="disabled", text="Validating..."); self.env_manager.validate_environment(self.on_env_validated)
-    def on_env_validated(self, success): self.is_env_valid = success; self.validate_env_button.configure(state="normal", text="Validate Environment", fg_color="green" if success else "red")
+    def update_status(self, text, progress=None):
+        self.status_label.configure(text=text)
+        if progress is not None:
+            self.progress_bar.set(progress)
+    def validate_env(self):
+        self.validate_env_button.configure(state="disabled", text="Validating...")
+        self.env_manager.validate_environment(self.on_env_validated)
+    def on_env_validated(self, success):
+        self.is_env_valid = success
+        self.validate_env_button.configure(state="normal", text="Validate Environment", fg_color="green" if success else "red")
     def browse_script(self):
         path = filedialog.askopenfilename(filetypes=[("Python Files", "*.py *.pyw")])
-        if path: self.script_entry.delete(0, "end"); self.script_entry.insert(0, path); self.exe_name_entry.delete(0, "end"); self.exe_name_entry.insert(0, Path(path).stem); self.branding_entries["product_name"].delete(0, "end"); self.branding_entries["product_name"].insert(0, Path(path).stem)
-    def browse_output_dir(self): path = filedialog.askdirectory(); self.output_dir_entry.delete(0, "end"); self.output_dir_entry.insert(0, path)
+        if path:
+            self.script_entry.delete(0, "end")
+            self.script_entry.insert(0, path)
+            self.exe_name_entry.delete(0, "end")
+            self.exe_name_entry.insert(0, Path(path).stem)
+            self.branding_entries["product_name"].delete(0, "end")
+            self.branding_entries["product_name"].insert(0, Path(path).stem)
+    def browse_output_dir(self):
+        path = filedialog.askdirectory()
+        self.output_dir_entry.delete(0, "end")
+        self.output_dir_entry.insert(0, path)
+
+    def browse_icon(self):
+        path = filedialog.askopenfilename(filetypes=[("Icon Files", "*.ico")])
+        if path:
+            self.icon_entry.delete(0, "end")
+            self.icon_entry.insert(0, path)
+
+    def _toggle_build_buttons(self, is_building):
+        state = "disabled" if is_building else "normal"
+        self.build_button.configure(state=state)
+        self.installer_button.configure(state=state)
+
     def start_build(self):
-        if not self.is_env_valid: messagebox.showerror("Environment Invalid", "Please validate the environment before building."); return
-        self.build_orchestrator.build(self.gather_project_settings(), lambda s: self.after(0, self.update_status, "Build successful." if s else "Build failed."))
+        if not self.is_env_valid:
+            messagebox.showerror("Environment Invalid", "Please validate the environment before building.")
+            return
+        self._toggle_build_buttons(is_building=True)
+        self.update_status("Starting build...", 0.1)
+        self.build_orchestrator.build(self.gather_project_settings(), lambda s: self.after(0, self._on_build_complete, s))
+
+    def _on_build_complete(self, success):
+        self.update_status("Build successful." if success else "Build failed.", 1.0)
+        self._toggle_build_buttons(is_building=False)
+        if success:
+             messagebox.showinfo("Build Complete", "Executable build has finished successfully.")
+
     def build_nsis_installer(self):
-        if not self.is_env_valid: messagebox.showerror("Environment Invalid", "Please validate environment first."); return
-        self.installer_maker.build_nsis(self.gather_installer_settings(), self.gather_project_settings(), self.gather_security_settings(), lambda s: self.after(0, self.update_status, "Installer build successful." if s else "Installer build failed."))
+        if not self.is_env_valid:
+            messagebox.showerror("Environment Invalid", "Please validate environment first.")
+            return
+        self._toggle_build_buttons(is_building=True)
+        self.update_status("Starting installer build...", 0.1)
+        self.installer_maker.build_nsis(self.gather_installer_settings(), self.gather_project_settings(), self.gather_security_settings(), lambda s: self.after(0, self._on_installer_build_complete, s))
+
+    def _on_installer_build_complete(self, success):
+        self.update_status("Installer build successful." if success else "Installer build failed.", 1.0)
+        self._toggle_build_buttons(is_building=False)
+        if success:
+            messagebox.showinfo("Installer Build Complete", "NSIS installer has been created successfully.")
+
     def gather_project_settings(self):
-        settings = {"script_path": self.script_entry.get(), "exe_name": self.exe_name_entry.get(), "output_dir": self.output_dir_entry.get() or "./dist", "one_file": self.one_file_var.get() == "on", "windowed": self.windowed_var.get() == "on", "clean_build": self.clean_build_var.get() == "on", "use_upx": self.use_upx_var.get() == "on", "hidden_imports": list(self.hidden_list.get(0, "end")), "exclude_modules": list(self.exclude_list.get(0, "end")), "data_paths": self.data_paths, "icon_path": ""}
-        for key, entry in self.branding_entries.items(): settings[key] = entry.get()
+        settings = {
+            "script_path": self.script_entry.get(),
+            "exe_name": self.exe_name_entry.get(),
+            "output_dir": self.output_dir_entry.get() or "./dist",
+            "one_file": self.one_file_var.get() == "on",
+            "windowed": self.windowed_var.get() == "on",
+            "clean_build": self.clean_build_var.get() == "on",
+            "use_upx": self.use_upx_var.get() == "on",
+            "hidden_imports": list(self.hidden_list.get(0, "end")),
+            "exclude_modules": list(self.exclude_list.get(0, "end")),
+            "data_paths": self.data_paths,
+            "icon_path": self.icon_entry.get()
+        }
+        for key, entry in self.branding_entries.items():
+            settings[key] = entry.get()
         return settings
     def gather_installer_settings(self):
-        return {"app_name": self.inst_app_name.get() or self.exe_name_entry.get(), "version": self.inst_version.get() or "1.0.0", "output_dir": self.inst_output_dir.get(), "desktop_shortcut": self.desktop_shortcut_var.get() == "on", "start_menu_shortcut": self.start_menu_var.get() == "on"}
+        return {
+            "app_name": self.inst_app_name.get() or self.exe_name_entry.get(),
+            "version": self.inst_version.get() or "1.0.0",
+            "output_dir": self.inst_output_dir.get(),
+            "desktop_shortcut": self.desktop_shortcut_var.get() == "on",
+            "start_menu_shortcut": self.start_menu_var.get() == "on"
+        }
     def gather_security_settings(self):
-        return {"sign_tool_path": self.sign_tool_entry.get(), "cert_file": self.cert_file_entry.get(), "cert_pass": self.cert_pass_entry.get()}
-    def load_default_project(self): pass
-    def open_ai_assistant(self):
-        if self.ai_assistant_window is None or not self.ai_assistant_window.winfo_exists(): self.ai_assistant_window = AIAssistantDialog(self, self.script_entry.get())
-        else: self.ai_assistant_window.focus()
-    def check_for_updates(self):
-        self.update_status("Checking for updates...")
-        def _check():
-            try:
-                with urllib.request.urlopen(UPDATE_URL, timeout=5) as response: latest_version = response.read().decode('utf-8').strip()
-                if latest_version > APP_VERSION: messagebox.showinfo("Update Available", f"A new version ({latest_version}) is available!\nVisit the website to download.")
-                else: messagebox.showinfo("No Updates", f"You are running the latest version ({APP_VERSION}).")
-            except Exception as e: messagebox.showerror("Update Check Failed", f"Could not check for updates: {e}")
-            if self.winfo_exists(): self.update_status("Ready")
-        threading.Thread(target=_check, daemon=True).start()
-
-if __name__ == "__main__":
-    if not hasattr(subprocess, 'CREATE_NO_WINDOW'): subprocess.CREATE_NO_WINDOW = 0
-    if len(sys.argv) > 1 and sys.argv[1] == '--smoke-test':
-        print("--- Running Headless End-to-End Smoke Test ---")
-        log_queue = queue.Queue(); logger = logging.getLogger('SmokeTest'); logger.setLevel(logging.INFO); queue_handler = QueueHandler(log_queue); logger.addHandler(queue_handler)
-        def run_test():
-            def log_from_queue():
-                while not log_queue.empty(): print(log_queue.get_nowait())
-            # Use mutable lists to store callback results
-            validation_status, build_status, installer_status = [], [], []
-            validation_complete, build_complete, installer_complete = threading.Event(), threading.Event(), threading.Event()
-            def on_validation_complete(s): validation_status.append(s); validation_complete.set()
-            def on_build_complete(s): build_status.append(s); build_complete.set()
-            def on_installer_complete(s): installer_status.append(s); installer_complete.set()
-            # 1. Validate
-            env_manager = EnvManager(logger); env_manager.validate_environment(on_validation_complete)
-            logger.info("Waiting for environment validation..."); completed = validation_complete.wait(timeout=300)
-            if not (completed and validation_status and validation_status[0]): logger.error("❌ Smoke Test Failed: Environment validation failed or timed out."); sys.exit(1)
-            # 2. Build
-            build_orchestrator = BuildOrchestrator(logger, env_manager)
-            test_app_path = Path("./smoke_test_app.py"); test_app_path.write_text("print('Hello from smoke test app!')")
-            smoke_settings = {"script_path": str(test_app_path), "exe_name": "SmokeTestApp", "output_dir": "./dist_smoke", "one_file": True, "windowed": False, "clean_build": True}
-            build_orchestrator.build(smoke_settings, on_build_complete)
-            logger.info("Build triggered. Waiting for completion..."); completed = build_complete.wait(timeout=300)
-            if not (completed and build_status and build_status[0]): logger.error("❌ Smoke Test Failed: Build process failed or timed out."); sys.exit(1)
-            # 3. Installer
-            if sys.platform == "win32":
-                installer_maker = InstallerMaker(logger)
-                installer_settings = {"app_name": "SmokeTestApp", "version": "1.0", "output_dir": "./installers_smoke", "desktop_shortcut": True}
-                installer_maker.build_nsis(installer_settings, smoke_settings, {}, on_installer_complete)
-                logger.info("Installer build triggered. Waiting for completion..."); completed = installer_complete.wait(timeout=120)
-                if not (completed and installer_status and installer_status[0]): logger.error("❌ Smoke Test Failed: Installer creation failed or timed out."); sys.exit(1)
-            else: logger.info("ℹ️ Skipping NSIS installer test on non-Windows platform.")
-            # 4. Verify
-            exe_path = Path("./dist_smoke/SmokeTestApp.exe") if sys.platform == "win32" else Path("./dist_smoke/SmokeTestApp")
-            installer_path = Path("./installers_smoke/Setup_SmokeTestApp_1.0.exe")
-            exe_ok = exe_path.is_file(); installer_ok = (not (sys.platform == "win32")) or installer_path.is_file()
-            if exe_ok and installer_ok: logger.info(f"✅ Smoke Test Success: All possible artifacts created.")
-def load_default_project(self): pass
+        return {
+            "sign_tool_path": self.sign_tool_entry.get(),
+            "cert_file": self.cert_file_entry.get(),
+            "cert_pass": self.cert_pass_entry.get()
+        }
+    def load_default_project(self):
+        pass
     def open_ai_assistant(self):
         if self.ai_assistant_window is None or not self.ai_assistant_window.winfo_exists():
             self.ai_assistant_window = AIAssistantDialog(self, self.script_entry.get())
@@ -541,8 +718,7 @@ def load_default_project(self): pass
                 with urllib.request.urlopen(UPDATE_URL, timeout=5) as response:
                     latest_version = response.read().decode('utf-8').strip()
                 if latest_version > APP_VERSION:
-                    messagebox.showinfo("Update Available", f"A new version ({latest_version}) is available!
-Visit the website to download.")
+                    messagebox.showinfo("Update Available", f"A new version ({latest_version}) is available!\\nVisit the website to download.")
                 else:
                     messagebox.showinfo("No Updates", f"You are running the latest version ({APP_VERSION}).")
             except Exception as e:
@@ -556,15 +732,18 @@ if __name__ == "__main__":
         subprocess.CREATE_NO_WINDOW = 0
     if len(sys.argv) > 1 and sys.argv[1] == '--smoke-test':
         print("--- Running Headless End-to-End Smoke Test ---")
-        log_queue = queue.Queue()
+
+        # Setup simplified logging for the smoke test
         logger = logging.getLogger('SmokeTest')
         logger.setLevel(logging.INFO)
-        queue_handler = QueueHandler(log_queue)
-        logger.addHandler(queue_handler)
+        # Prevent adding handlers multiple times if the script is re-run in the same process
+        if not logger.handlers:
+            stream_handler = logging.StreamHandler(sys.stdout)
+            formatter = logging.Formatter('%(message)s')
+            stream_handler.setFormatter(formatter)
+            logger.addHandler(stream_handler)
+
         def run_test():
-            def log_from_queue():
-                while not log_queue.empty():
-                    print(log_queue.get_nowait())
             # Use mutable lists to store callback results
             validation_status, build_status, installer_status = [], [], []
             validation_complete, build_complete, installer_complete = threading.Event(), threading.Event(), threading.Event()
@@ -629,54 +808,12 @@ if __name__ == "__main__":
                 logger.info(f"✅ Smoke Test Success: All possible artifacts created.")
             else:
                 logger.error(f"❌ Smoke Test Failed: Missing output files. Found EXE: {exe_ok}, Found Installer: {installer_path.is_file() if sys.platform == 'win32' else 'skipped'}.")
+
+        # Run the test in a thread and wait for it to complete
         test_thread = threading.Thread(target=run_test)
         test_thread.start()
-        while test_thread.is_alive():
-            try:
-                while True:
-                    print(log_queue.get_nowait())
-            except queue.Empty:
-                pass
-            time.sleep(0.1)
-        # Final log drain
-        try:
-            while True:
-                print(log_queue.get_nowait())
-        except queue.Empty:
-            pass
-    else:
-        app = Py2WinPremiumApp()
-        app.mainloop()
-        test_thread = threading.Thread(target=run_test)
-        test_thread.start()
-        while test_thread.is_alive():
-            try:
-                while True: print(log_queue.get_nowait())
-            except queue.Empty: pass
-else: logger.error(f"❌ Smoke Test Failed: Missing output files. Found EXE: {exe_ok}, Found Installer: {installer_path.is_file() if sys.platform == 'win32' else 'skipped'}.")
-        test_thread = threading.Thread(target=run_test)
-        test_thread.start()
-        log_event = threading.Event()
-        def log_drain():
-            while test_thread.is_alive() or not log_queue.empty():
-                try:
-                    while True:
-                        print(log_queue.get_nowait())
-                except queue.Empty:
-                    log_event.wait(1)
-                    log_event.clear()
-        log_thread = threading.Thread(target=log_drain)
-        log_thread.start()
         test_thread.join()
-        log_event.set()
-        log_thread.join()
-    else:
-        app = Py2WinPremiumApp()
-        app.mainloop()
-        # Final log drain
-        try:
-            while True: print(log_queue.get_nowait())
-        except queue.Empty: pass
+
     else:
         app = Py2WinPremiumApp()
         app.mainloop()
